@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/constant/app_secrets.dart';
 
 import 'features/onboarding/presentation/splash_screen.dart';
+// 1. ADD THIS IMPORT (Make sure the path matches your project structure)
+import 'features/dashboard/presentation/main_navigation_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -33,7 +35,6 @@ class MiraApp extends StatelessWidget {
         brightness: Brightness.light,
         scaffoldBackgroundColor: AppColors.background,
 
-        // Setup Font Futuristik (Contoh: Outfit atau Inter)
         textTheme: GoogleFonts.outfitTextTheme(
           Theme.of(context).textTheme.apply(
             bodyColor: AppColors.textMain,
@@ -41,7 +42,6 @@ class MiraApp extends StatelessWidget {
           ),
         ),
 
-        // Setup Warna Komponen
         colorScheme: const ColorScheme.light(
           primary: AppColors.primary,
           secondary: AppColors.secondary,
@@ -50,7 +50,6 @@ class MiraApp extends StatelessWidget {
           onSurface: AppColors.textMain,
         ),
 
-        // Setup Style App Bar Default
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.background,
           elevation: 0,
@@ -65,6 +64,9 @@ class MiraApp extends StatelessWidget {
       ),
 
       home: const SplashScreen(),
+
+      // 2. ADD THIS ROUTES BLOCK
+      routes: {'/home': (context) => const MainNavigationScreen()},
     );
   }
 }

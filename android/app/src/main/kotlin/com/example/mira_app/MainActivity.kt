@@ -1,5 +1,8 @@
 package com.example.mira_app
 
-import io.flutter.embedding.android.FlutterActivity
+// 1. ADD THIS IMPORT
+import io.flutter.embedding.android.FlutterFragmentActivity
 
-class MainActivity : FlutterActivity()
+// 2. CHANGE 'FlutterActivity' TO 'FlutterFragmentActivity'
+class MainActivity: FlutterFragmentActivity() {
+}
