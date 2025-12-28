@@ -36,9 +36,10 @@ class _RegisterScreenState extends State<RegisterScreen>
       duration: const Duration(seconds: 6),
     )..repeat(reverse: true);
 
-    _bgScaleAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
-      CurvedAnimation(parent: _bgController, curve: Curves.easeInOut),
-    );
+    _bgScaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.15,
+    ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
 
     // 2. Form Entrance Animation
     _formController = AnimationController(
@@ -46,16 +47,15 @@ class _RegisterScreenState extends State<RegisterScreen>
       duration: const Duration(milliseconds: 1000),
     );
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.2),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
-    );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+          CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
+        );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _formController, curve: Curves.easeOut),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _formController, curve: Curves.easeOut));
 
     _formController.forward();
   }
@@ -94,7 +94,8 @@ class _RegisterScreenState extends State<RegisterScreen>
               // SingleChildScrollView tetap ada untuk menghindari error overflow saat keyboard muncul,
               // TAPI user tidak bisa scroll manual karena physics dimatikan.
               child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(), // <--- INI KUNCINYA (User gabisa scroll)
+                physics:
+                    const NeverScrollableScrollPhysics(), // <--- INI KUNCINYA (User gabisa scroll)
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -106,9 +107,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         children: [
                           // Lottie Icon (Diperkecil agar muat 1 layar)
                           SizedBox(
-                            height: 80, 
+                            height: 80,
                             child: Lottie.asset(
-                              'assets/lottie/BookOpening.json', 
+                              'assets/lottie/BookOpening.json',
                               fit: BoxFit.contain,
                             ),
                           ),
@@ -124,7 +125,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                               "Join the Ecosystem",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 24, // Font sedikit lebih kecil agar compact
+                                fontSize:
+                                    24, // Font sedikit lebih kecil agar compact
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 letterSpacing: -0.5,
@@ -145,7 +147,6 @@ class _RegisterScreenState extends State<RegisterScreen>
                     ),
 
                     const SizedBox(height: 20), // Jarak ke form
-
                     // --- GLASS CARD FORM ---
                     SlideTransition(
                       position: _slideAnimation,
@@ -154,7 +155,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                         child: Container(
                           width: double.infinity,
                           constraints: const BoxConstraints(maxWidth: 450),
-                          padding: const EdgeInsets.all(24), // Padding dalam card dikurangi (dari 32 ke 24)
+                          padding: const EdgeInsets.all(
+                            24,
+                          ), // Padding dalam card dikurangi (dari 32 ke 24)
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(28),
@@ -173,7 +176,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min, // Agar card memeluk konten seadanya
+                            mainAxisSize: MainAxisSize
+                                .min, // Agar card memeluk konten seadanya
                             children: [
                               const Text(
                                 "Create Account",
@@ -191,21 +195,21 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 icon: Icons.person_outline_rounded,
                               ),
                               const SizedBox(height: 12),
-                              
+
                               const MiraTextField(
                                 hintText: "Email Address",
                                 icon: Icons.email_outlined,
                                 keyboardType: TextInputType.emailAddress,
                               ),
                               const SizedBox(height: 12),
-                              
+
                               const MiraTextField(
                                 hintText: "Password",
                                 icon: Icons.lock_outline_rounded,
                                 isPassword: true,
                               ),
                               const SizedBox(height: 12),
-                              
+
                               const MiraTextField(
                                 hintText: "Confirm Password",
                                 icon: Icons.lock_reset_rounded,
@@ -214,16 +218,12 @@ class _RegisterScreenState extends State<RegisterScreen>
 
                               const SizedBox(height: 24),
 
-                              // Sign Up Button
                               MiraButton(
                                 text: "Register",
                                 onPressed: () {
-                                  // Navigasi ke Dashboard / Verification
-                                  print("Register Clicked");
+                                  debugPrint("Register Clicked");
                                 },
                               ),
-                              
-                              // BAGIAN GOOGLE LOGIN SUDAH DIHAPUS DISINI
                             ],
                           ),
                         ),
@@ -240,7 +240,10 @@ class _RegisterScreenState extends State<RegisterScreen>
                         children: [
                           const Text(
                             "Already have an account? ",
-                            style: TextStyle(color: AppColors.textMuted, fontSize: 13),
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                            ),
                           ),
                           GestureDetector(
                             onTap: () {

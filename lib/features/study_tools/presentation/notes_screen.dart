@@ -1,9 +1,9 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:ui'; // Diperlukan untuk BackdropFilter (jika ingin efek glass kedepannya)
 import '../../../core/constant/app_colors.dart';
 
-// --- 1. MODEL DATA (TETAP SAMA) ---
+// --- 1. DATA MODEL ---
 class Note {
   String id;
   String title;
@@ -20,6 +20,7 @@ class Note {
   });
 }
 
+// --- 2. MAIN NOTES SCREEN ---
 class NotesScreen extends StatefulWidget {
   const NotesScreen({super.key});
 
@@ -27,55 +28,87 @@ class NotesScreen extends StatefulWidget {
   State<NotesScreen> createState() => _NotesScreenState();
 }
 
-class _NotesScreenState extends State<NotesScreen> {
-  // Dummy Data Awal
-  List<Note> notes = [
+class _NotesScreenState extends State<NotesScreen> with SingleTickerProviderStateMixin {
+  // Database Catatan (Dummy Data)
+  final List<Note> _allNotes = [
     Note(
       id: '1',
-      title: "🔥 Deadline Tugas Besar IoT",
-      content:
-          "Kumpulkan laporan akhir project hari Jumat jam 23.59. Jangan lupa cek format PDF dan lampiran source code.",
+      title: "🔥 IoT Project Deadline",
+      content: "Submit the final project report this Friday at 23:59. Need to double-check the PDF format and citation style.",
       date: DateTime.now().subtract(const Duration(hours: 5)),
       isImportant: true,
     ),
     Note(
       id: '2',
-      title: "Ide Skripsi Web Security",
-      content:
-          "Analisis serangan XSS pada framework legacy. Coba cari referensi paper tahun 2024 di IEEE Explore.",
+      title: "Thesis Ideas: Web Security",
+      content: "Analysis of XSS attacks on legacy frameworks. Check IEEE 2024 papers regarding new CSP bypass techniques.",
       date: DateTime.now().subtract(const Duration(days: 1)),
       isImportant: false,
     ),
     Note(
       id: '3',
-      title: "Bahan Belajar Flutter Bloc",
-      content:
-          "Cek dokumentasi resmi bloclibrary.dev, lalu coba buat project counter sederhana.",
-      date: DateTime.now().subtract(const Duration(days: 2)),
+      title: "React Native vs Flutter",
+      content: "Pros and cons for the next mobile app project. Flutter has better performance, but React Native has OTA updates.",
+      date: DateTime.now().subtract(const Duration(days: 3)),
       isImportant: false,
     ),
   ];
 
-  void _addOrUpdateNote(Note note) {
-    setState(() {
-      final index = notes.indexWhere((n) => n.id == note.id);
-      if (index != -1) {
-        notes[index] = note;
-      } else {
-        if (note.isImportant) {
-          notes.insert(0, note);
-        } else {
-          notes.add(note);
-        }
-      }
-    });
+  List<Note> _filteredNotes = [];
+  final TextEditingController _searchController = TextEditingController();
+  late AnimationController _animController;
+
+  @override
+  void initState() {
+    super.initState();
+    _filteredNotes = _allNotes;
+    _searchController.addListener(_runFilter);
+    
+    // Animasi Entry
+    _animController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..forward();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) => _showIntroGuide());
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _animController.dispose();
+    super.dispose();
+  }
+
+  void _runFilter() {
+    List<Note> results = [];
+    if (_searchController.text.isEmpty) {
+      results = _allNotes;
+    } else {
+      results = _allNotes.where((note) {
+        final query = _searchController.text.toLowerCase();
+        return note.title.toLowerCase().contains(query) || 
+               note.content.toLowerCase().contains(query);
+      }).toList();
+    }
+    setState(() => _filteredNotes = results);
   }
 
   void _deleteNote(String id) {
     setState(() {
-      notes.removeWhere((n) => n.id == id);
+      _allNotes.removeWhere((n) => n.id == id);
+      _runFilter();
     });
-    HapticFeedback.mediumImpact();
+    HapticFeedback.lightImpact();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text("Note deleted"),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        backgroundColor: AppColors.textMain,
+        duration: const Duration(seconds: 1),
+      )
+    );
   }
 
   void _openEditor({Note? existingNote}) async {
@@ -87,75 +120,340 @@ class _NotesScreenState extends State<NotesScreen> {
     );
 
     if (result != null && result is Note) {
-      _addOrUpdateNote(result);
+      setState(() {
+        final index = _allNotes.indexWhere((n) => n.id == result.id);
+        if (index != -1) {
+          _allNotes[index] = result;
+        } else {
+          _allNotes.insert(0, result);
+        }
+        _runFilter();
+      });
     }
+  }
+
+  // --- INTRO GUIDE ---
+  void _showIntroGuide() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
+        child: Container(
+          height: MediaQuery.of(context).size.height * 0.75, 
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+          ),
+          padding: const EdgeInsets.fromLTRB(32, 12, 32, 0), 
+          child: Column(
+            children: [
+              Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(10))),
+              const SizedBox(height: 20),
+              
+              Expanded(
+                child: SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  child: Column(
+                    children: [
+                      const Text("Smart Notes", 
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.textMain, letterSpacing: -0.5)),
+                      const SizedBox(height: 6),
+                      const Text(
+                        "Capture your ideas quickly and organize them efficiently.",
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.textMuted, fontSize: 14),
+                      ),
+                      const SizedBox(height: 25),
+                      
+                      _buildGuideItem(Icons.edit_note_rounded, AppColors.primary, "Quick Capture", "Write down thoughts instantly with a distraction-free editor."),
+                      _buildGuideItem(Icons.star_rounded, AppColors.secondary, "Prioritize", "Mark important notes to keep them visible at the top."),
+                      _buildGuideItem(Icons.search_rounded, AppColors.success, "Instant Search", "Find any note in seconds with keywords."),
+                    ],
+                  ),
+                ),
+              ),
+              
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 12, bottom: 16),
+                  child: SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Start Writing", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuideItem(IconData icon, Color color, String title, String desc) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 25),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: color.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(16)),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 20),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.textMain)),
+                const SizedBox(height: 4),
+                Text(desc, style: const TextStyle(color: AppColors.textMuted, fontSize: 13, height: 1.4)),
+              ],
+            ),
+          )
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      // Custom AppBar yang lebih modern
-      appBar: AppBar(
-        backgroundColor: AppColors.background,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        titleSpacing: 24,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              shape: BoxShape.circle,
-              border: Border.all(color: Colors.black.withValues(alpha: 0.05)),
-            ),
-            child: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              size: 18,
-              color: AppColors.textMain,
-            ),
-          ),
+      
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: FloatingActionButton.extended(
+          onPressed: () => _openEditor(),
+          backgroundColor: AppColors.textMain,
+          foregroundColor: Colors.white,
+          elevation: 4,
+          icon: const Icon(Icons.add_rounded),
+          label: const Text("New Note", style: TextStyle(fontWeight: FontWeight.bold)),
         ),
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      ),
+
+      // FIX: Menggunakan Column agar Header & Search DIAM (Fixed), List yang Scroll
+      body: SafeArea(
+        bottom: false,
+        child: Column(
           children: [
-            Text(
-              "Journal & Notes",
-              style: TextStyle(
-                color: AppColors.textMain,
-                fontWeight: FontWeight.w800,
-                fontSize: 22,
+            // --- FIXED HEADER SECTION ---
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 16),
+              color: AppColors.background, // Match background
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Top Row (Back & Help)
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: IconButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          padding: const EdgeInsets.all(8),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18, color: AppColors.textMain),
+                      ),
+                      IconButton(
+                        onPressed: _showIntroGuide,
+                        icon: const Icon(Icons.help_outline_rounded, color: AppColors.textMuted),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // Title
+                  const Text(
+                    "Smart Notes",
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textMain,
+                      letterSpacing: -1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Search Bar (Fixed)
+                  _buildSearchBox(),
+                ],
               ),
             ),
-            Text(
-              "Capture your thoughts",
-              style: TextStyle(
-                color: AppColors.textMuted,
-                fontWeight: FontWeight.w500,
-                fontSize: 14,
-              ),
+
+            // --- SCROLLABLE LIST SECTION ---
+            Expanded(
+              child: _filteredNotes.isEmpty
+                  ? _buildEmptyState()
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100), // Padding atas kecil, bawah besar untuk FAB
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: _filteredNotes.length,
+                      itemBuilder: (context, index) {
+                        return AnimatedBuilder(
+                          animation: _animController,
+                          builder: (context, child) {
+                            return FadeTransition(
+                              opacity: _animController,
+                              child: SlideTransition(
+                                position: Tween<Offset>(
+                                  begin: const Offset(0, 0.2),
+                                  end: Offset.zero,
+                                ).animate(CurvedAnimation(
+                                  parent: _animController, 
+                                  curve: Interval(
+                                    index * 0.1 > 1.0 ? 1.0 : index * 0.1, 
+                                    1.0, 
+                                    curve: Curves.easeOutCubic
+                                  )
+                                )),
+                                child: child,
+                              ),
+                            );
+                          },
+                          child: _buildNoteCard(_filteredNotes[index]),
+                        );
+                      },
+                    ),
             ),
           ],
         ),
       ),
-      body: notes.isEmpty
-          ? _buildEmptyState()
-          : ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              itemCount: notes.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 16),
-              itemBuilder: (context, index) {
-                final note = notes[index];
-                return _buildPremiumNoteItem(note);
-              },
+    );
+  }
+
+  Widget _buildSearchBox() {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadow.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        style: const TextStyle(color: AppColors.textMain, fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          hintText: "Search notes...",
+          hintStyle: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.5)),
+          prefixIcon: const Icon(Icons.search_rounded, color: AppColors.primary),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 16),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear_rounded, size: 20, color: AppColors.textMuted),
+                  onPressed: () => _searchController.clear(),
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoteCard(Note note) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: note.isImportant 
+              ? AppColors.secondary.withValues(alpha: 0.5) 
+              : Colors.transparent,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadow.withValues(alpha: 0.05),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(24),
+        child: InkWell(
+          onTap: () => _openEditor(existingNote: note),
+          onLongPress: () => _deleteNote(note.id),
+          borderRadius: BorderRadius.circular(24),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    if (note.isImportant)
+                      const Padding(
+                        padding: EdgeInsets.only(right: 8),
+                        child: Icon(Icons.star_rounded, color: AppColors.secondary, size: 20),
+                      ),
+                    Expanded(
+                      child: Text(
+                        note.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textMain,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  note.content,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.textMuted, 
+                    height: 1.5, 
+                    fontSize: 14
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Icon(Icons.calendar_today_rounded, size: 12, color: AppColors.textMuted.withValues(alpha: 0.6)),
+                    const SizedBox(width: 6),
+                    Text(
+                      _formatDate(note.date),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted.withValues(alpha: 0.6),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _openEditor(),
-        backgroundColor: AppColors.primary,
-        elevation: 4,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        child: const Icon(Icons.add_rounded, size: 32),
+          ),
+        ),
       ),
     );
   }
@@ -166,203 +464,32 @@ class _NotesScreenState extends State<NotesScreen> {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: const EdgeInsets.all(30),
+            padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
+              color: AppColors.surface,
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              Icons.edit_note_rounded,
-              size: 80,
-              color: AppColors.primary.withValues(alpha: 0.5),
-            ),
+            child: Icon(Icons.note_alt_outlined, size: 48, color: AppColors.textMuted.withValues(alpha: 0.3)),
           ),
-          const SizedBox(height: 24),
-          Text(
-            "Your notebook is empty",
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textMain.withValues(alpha: 0.7),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            "Tap the + button to start writing!",
-            style: TextStyle(
-              fontSize: 16,
-              color: AppColors.textMuted.withValues(alpha: 0.6),
-            ),
-          ),
+          const SizedBox(height: 16),
+          const Text("No notes yet", style: TextStyle(color: AppColors.textMuted)),
         ],
       ),
     );
   }
 
-  // --- REDESIGNED NOTE CARD ---
-  Widget _buildPremiumNoteItem(Note note) {
-    return Dismissible(
-      key: Key(note.id),
-      direction: DismissDirection.endToStart,
-      onDismissed: (_) => _deleteNote(note.id),
-      background: Container(
-        decoration: BoxDecoration(
-          color: AppColors.error.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 24),
-        child: const Icon(
-          Icons.delete_forever_rounded,
-          color: AppColors.error,
-          size: 32,
-        ),
-      ),
-      child: GestureDetector(
-        onTap: () => _openEditor(existingNote: note),
-        child: Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            // Jika penting, beri tint warna merah halus di background
-            color: note.isImportant
-                ? AppColors.secondary.withValues(alpha: 0.05)
-                : AppColors.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              // Jika penting, bordernya sedikit lebih terlihat
-              color: note.isImportant
-                  ? AppColors.secondary.withValues(alpha: 0.3)
-                  : Colors.transparent,
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(
-                  alpha: note.isImportant ? 0.1 : 0.06,
-                ),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Title Header
-              Text(
-                note.title,
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w800, // Lebih tebal
-                  color: note.isImportant
-                      ? AppColors.secondary
-                      : AppColors.textMain,
-                  letterSpacing: -0.3,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-
-              const SizedBox(height: 10),
-
-              // Content Preview
-              Text(
-                note.content,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: AppColors.textMuted,
-                  height: 1.5,
-                  fontWeight: FontWeight.w500,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-
-              const SizedBox(height: 18),
-
-              // Footer: Date & Tag
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Date
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today_rounded,
-                        size: 14,
-                        color: AppColors.textMuted.withValues(alpha: 0.7),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        _formatDate(note.date),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.textMuted.withValues(alpha: 0.8),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  // Important Tag (Jika ada)
-                  if (note.isImportant)
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppColors.secondary,
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.secondary.withValues(alpha: 0.3),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        children: const [
-                          Icon(
-                            Icons.star_rounded,
-                            size: 14,
-                            color: Colors.white,
-                          ),
-                          SizedBox(width: 4),
-                          Text(
-                            "Urgent",
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: Colors.white,
-                              letterSpacing: 0.5,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // Helper simpel untuk format tanggal
   String _formatDate(DateTime date) {
-    // Bisa diganti pakai package intl jika mau lebih kompleks
-    return "${date.day}/${date.month} • ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+    final now = DateTime.now();
+    if (date.day == now.day && date.month == now.month && date.year == now.year) {
+      return "Today, ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}";
+    }
+    return "${date.day}/${date.month}/${date.year}";
   }
 }
 
-// --- 2. REDESIGNED EDITOR SCREEN ---
-
+// --- 3. EDITOR SCREEN (DISTRACTION FREE) ---
 class NoteEditorScreen extends StatefulWidget {
   final Note? note;
-
   const NoteEditorScreen({super.key, this.note});
 
   @override
@@ -373,210 +500,95 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
   bool _isImportant = false;
+  final FocusNode _contentFocus = FocusNode();
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.note?.title ?? "");
-    _contentController = TextEditingController(
-      text: widget.note?.content ?? "",
-    );
+    _contentController = TextEditingController(text: widget.note?.content ?? "");
     _isImportant = widget.note?.isImportant ?? false;
   }
 
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _contentController.dispose();
-    super.dispose();
-  }
-
-  void _saveNote() {
+  void _save() {
     if (_titleController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Title cannot be empty!"),
-          backgroundColor: AppColors.error,
-        ),
-      );
+      Navigator.pop(context); // Jangan simpan jika kosong
       return;
     }
-
-    final newNote = Note(
-      id: widget.note?.id ?? DateTime.now().millisecondsSinceEpoch.toString(),
-      title: _titleController.text,
-      content: _contentController.text,
-      date: DateTime.now(),
-      isImportant: _isImportant,
+    Navigator.pop(
+      context,
+      Note(
+        id: widget.note?.id ?? DateTime.now().toString(),
+        title: _titleController.text,
+        content: _contentController.text,
+        date: DateTime.now(),
+        isImportant: _isImportant,
+      ),
     );
-
-    HapticFeedback.lightImpact();
-    Navigator.pop(context, newNote);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // Background sedikit off-white agar mata nyaman
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: AppColors.surface,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: AppColors.surface,
+        leading: IconButton(
+          onPressed: _save, // Back means save
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textMain, size: 20),
+        ),
+        actions: [
+          IconButton(
+            onPressed: () {
+              setState(() => _isImportant = !_isImportant);
+              HapticFeedback.selectionClick();
+            },
+            icon: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 300),
+              transitionBuilder: (child, anim) => ScaleTransition(scale: anim, child: child),
+              child: Icon(
+                _isImportant ? Icons.star_rounded : Icons.star_border_rounded,
+                key: ValueKey(_isImportant),
+                color: _isImportant ? AppColors.secondary : AppColors.textMuted,
+                size: 26,
+              ),
+            ),
+          ),
+          const SizedBox(width: 16),
+        ],
+      ),
       body: SafeArea(
         child: Column(
           children: [
-            // --- CUSTOM HEADER ---
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Close Button
-                  InkWell(
-                    onTap: () => Navigator.pop(context),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.black.withValues(alpha: 0.05),
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.close_rounded,
-                        color: AppColors.textMain,
-                      ),
-                    ),
-                  ),
-
-                  Row(
-                    children: [
-                      // Important Toggle Button
-                      GestureDetector(
-                        onTap: () {
-                          setState(() {
-                            _isImportant = !_isImportant;
-                          });
-                          HapticFeedback.selectionClick();
-                        },
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 300),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: _isImportant
-                                ? AppColors.secondary.withValues(alpha: 0.1)
-                                : Colors.white,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: _isImportant
-                                  ? AppColors.secondary
-                                  : Colors.black.withValues(alpha: 0.05),
-                            ),
-                          ),
-                          child: Icon(
-                            _isImportant
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
-                            color: _isImportant
-                                ? AppColors.secondary
-                                : AppColors.textMuted,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      // Save Button
-                      TextButton(
-                        onPressed: _saveNote,
-                        style: TextButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(24),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 14,
-                          ),
-                          elevation: 4,
-                          shadowColor: AppColors.primary.withValues(alpha: 0.4),
-                        ),
-                        child: const Text(
-                          "Save Note",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+              child: TextField(
+                controller: _titleController,
+                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.textMain),
+                decoration: InputDecoration(
+                  hintText: "Title",
+                  hintStyle: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.4)),
+                  border: InputBorder.none,
+                ),
+                textInputAction: TextInputAction.next,
+                onSubmitted: (_) => _contentFocus.requestFocus(),
               ),
             ),
-
-            // --- EDITOR CANVAS ---
+            const Divider(height: 1),
             Expanded(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.shadow.withValues(alpha: 0.05),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(30),
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // TITLE INPUT (Big & Bold)
-                        TextField(
-                          controller: _titleController,
-                          style: const TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: AppColors.textMain,
-                            letterSpacing: -0.5,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: "Untitled Idea...",
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(color: Colors.black26),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          textInputAction: TextInputAction.next,
-                          maxLines: null,
-                        ),
-                        const SizedBox(height: 20),
-
-                        // CONTENT INPUT (Clean)
-                        TextField(
-                          controller: _contentController,
-                          style: const TextStyle(
-                            fontSize: 17,
-                            height: 1.6,
-                            color: AppColors.textMain,
-                            fontWeight: FontWeight.w400,
-                          ),
-                          decoration: const InputDecoration(
-                            hintText: "Start typing your thoughts here...",
-                            border: InputBorder.none,
-                            hintStyle: TextStyle(color: Colors.black12),
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          maxLines: null, // Unlimited lines
-                          keyboardType: TextInputType.multiline,
-                        ),
-                      ],
-                    ),
-                  ),
+              child: TextField(
+                focusNode: _contentFocus,
+                controller: _contentController,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                style: const TextStyle(fontSize: 16, height: 1.6, color: AppColors.textMain),
+                decoration: InputDecoration(
+                  hintText: "Start typing your thoughts...",
+                  hintStyle: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.4)),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.all(24),
                 ),
               ),
             ),

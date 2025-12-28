@@ -5,126 +5,142 @@ class DashboardHeader extends StatelessWidget {
   final String userName;
   final bool isPro;
 
-  const DashboardHeader({
-    super.key,
-    required this.userName,
-    this.isPro = true,
-  });
+  const DashboardHeader({super.key, required this.userName, this.isPro = true});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              ShaderMask(
-                shaderCallback: (bounds) => const LinearGradient(
-                  colors: [AppColors.textMain, AppColors.primary],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ).createShader(bounds),
-                child: Text(
-                  "Hello, $userName",
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: AppColors.surface,
-                    letterSpacing: -0.5,
+    return Padding(
+      // Memberikan ruang nafas pada header
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // BAGIAN KIRI: TEKS
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ShaderMask(
+                  shaderCallback: (bounds) => const LinearGradient(
+                    colors: [AppColors.textMain, AppColors.primary],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(bounds),
+                  child: Text(
+                    "Hello, $userName",
+                    style: const TextStyle(
+                      fontSize: 26, // Ukuran sedikit disesuaikan agar lebih proporsional
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                      letterSpacing: -0.8,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                "Let's start our journey",
-                style: TextStyle(
-                  color: AppColors.textMuted.withValues(alpha: 0.8),
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
+                const SizedBox(height: 2),
+                Text(
+                  "Let's start our journey",
+                  style: TextStyle(
+                    color: AppColors.textMuted.withValues(alpha: 0.7),
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+              ],
+            ),
+          ),
+
+          // BAGIAN KANAN: BADGE & AVATAR
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // BADGE STATUS (PRO/FREE)
+              _buildStatusBadge(),
+              
+              const SizedBox(width: 16),
+
+              // AVATAR DENGAN RING DESIGN
+              _buildAvatar(),
             ],
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isPro ? AppColors.proBg : AppColors.freeBg,
+        borderRadius: BorderRadius.circular(20), // Pill style lebih rapi
+        border: Border.all(
+          color: isPro ? AppColors.proBorder : AppColors.freeBorder,
+          width: 1,
         ),
-
-        const SizedBox(width: 12),
-
-        Row(
-          children: [
-            // BADGE STATUS SUBSCRIPTION
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: isPro ? AppColors.proBg : AppColors.freeBg,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                  color: isPro ? AppColors.proBorder : AppColors.freeBorder,
-                ),
-              ),
-              child: Row(
-                children: [
-                  if (isPro)
-                    const Padding(
-                      padding: EdgeInsets.only(right: 4),
-                      child: Icon(
-                        Icons.verified_rounded,
-                        size: 12,
-                        color: AppColors.proGold,
-                      ),
-                    ),
-                  Text(
-                    isPro ? "PRO" : "FREE",
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w900,
-                      // Menggunakan AppColors
-                      color: isPro ? AppColors.proGold : AppColors.textMuted,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ],
-              ),
+      ),
+      child: Row(
+        children: [
+          if (isPro) ...[
+            const Icon(
+              Icons.verified_rounded,
+              size: 14,
+              color: AppColors.proGold,
             ),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            isPro ? "PRO" : "FREE",
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: isPro ? AppColors.proGold : AppColors.textMuted,
+              letterSpacing: 0.8,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-            const SizedBox(width: 12),
-            
-            // AVATAR
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.surface,
-                border: Border.all(color: AppColors.surface, width: 2),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.1),
-                    blurRadius: 15,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.primary.withValues(alpha: 0.1),
-                ),
-                child: const Icon(
-                  Icons.person_rounded,
-                  color: AppColors.primary,
-                  size: 26,
-                ),
-              ),
+  Widget _buildAvatar() {
+    return Container(
+      width: 52,
+      height: 52,
+      padding: const EdgeInsets.all(2), // Jarak untuk ring border luar
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        border: Border.all(
+          color: AppColors.primary.withValues(alpha: 0.2),
+          width: 1,
+        ),
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primary.withValues(alpha: 0.1),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
-      ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(50),
+          child: Container(
+            color: AppColors.primary.withValues(alpha: 0.08),
+            child: const Icon(
+              Icons.person_rounded,
+              color: AppColors.primary,
+              size: 30,
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

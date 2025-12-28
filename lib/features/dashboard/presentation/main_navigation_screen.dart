@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+// --- IMPORTS SCREEN (Pastikan path sesuai dengan project kamu) ---
 import '../../home/presentation/home_screen.dart';
 import '../../community/presentation/community_screen.dart';
 import '../../chats/presentation/chats_screen.dart';
@@ -20,6 +21,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     with TickerProviderStateMixin {
   int _currentIndex = 0;
 
+  // Animation Controllers
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
   late AnimationController _navEntranceController;
@@ -38,7 +40,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       const ProfileScreen(),
     ];
 
-    // Animasi Background
+    // 1. Animasi Background (Breathing Effect)
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -48,7 +50,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
       CurvedAnimation(parent: _bgController, curve: Curves.easeInOutSine),
     );
 
-    // Animasi Entrance Navbar
+    // 2. Animasi Entrance Navbar (Slide Up)
     _navEntranceController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1200),
@@ -77,6 +79,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Mengatur Status Bar
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -87,14 +90,14 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      extendBody: true,
+      extendBody: true, // Body meluas ke belakang navbar
       backgroundColor: const Color(0xFFF8FAFC),
       body: Stack(
         children: [
-          // 1. Background
+          // 1. Background Animasi
           _buildAnimatedBackground(size),
 
-          // 2. Content
+          // 2. Content Body dengan Transisi Fade & Scale
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 500),
             switchInCurve: Curves.easeOutQuint,
@@ -119,8 +122,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 
+  // --- PREMIUM DOCK BUILDER ---
   Widget _buildPremiumDock(Size size) {
-    // Ukuran gap tengah FIX agar layout tidak geser
     const double centerGapWidth = 70.0;
 
     return SlideTransition(
@@ -132,38 +135,56 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             ),
           ),
       child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 0, 20, 25),
-        height: 80, 
+        // Margin disesuaikan agar terlihat "melayang"
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 30),
+        height: 80,
         child: Stack(
           alignment: Alignment.center,
           clipBehavior: Clip.none,
           children: [
-            // --- Glassmorphism Container ---
+            // --- Glassmorphism Base ---
             ClipRRect(
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(35), // Radius lebih lembut
               child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20), // Blur premium
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 0), // Padding 0 agar Expanded maksimal
+                  padding: const EdgeInsets.symmetric(horizontal: 0),
                   decoration: BoxDecoration(
                     color: Colors.white.withValues(alpha: 0.85),
-                    borderRadius: BorderRadius.circular(30),
+                    borderRadius: BorderRadius.circular(35),
+                    
+                    // Highlight Border (Efek Kaca)
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.7),
+                      color: Colors.white.withValues(alpha: 0.9),
                       width: 1.5,
                     ),
+                    
+                    // KOMBINASI 3 LAYER SHADOW
                     boxShadow: [
+                      // 1. Ambient Shadow (Jauh & Halus)
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 30,
+                        offset: const Offset(0, 15),
+                      ),
+                      // 2. Glow Shadow (Warna Tema)
                       BoxShadow(
                         color: AppColors.primary.withValues(alpha: 0.08),
-                        blurRadius: 25,
-                        offset: const Offset(0, 10),
-                        spreadRadius: -2,
+                        blurRadius: 20,
+                        offset: const Offset(0, 8),
+                        spreadRadius: 2,
+                      ),
+                      // 3. Outline Shadow (Definisi Tajam)
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.03),
+                        blurRadius: 2,
+                        offset: const Offset(0, 1),
                       ),
                     ],
                   ),
                   child: Row(
                     children: [
-                      // KIRI
+                      // Sisi Kiri
                       Expanded(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -184,10 +205,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
                         ),
                       ),
                       
-                      // TENGAH (FIXED SIZE GAP)
+                      // Gap Tengah
                       const SizedBox(width: centerGapWidth),
 
-                      // KANAN
+                      // Sisi Kanan
                       Expanded(
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -215,7 +236,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
             
             // --- Tombol Tengah (Community) ---
             Positioned(
-              top: -20, // Posisi naik sedikit
+              top: -22, // Posisi sedikit naik keluar dari dock
               child: GestureDetector(
                 onTap: () => _onTabTapped(2),
                 child: _buildCenterButton(),
@@ -273,7 +294,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
         
         const SizedBox(height: 6),
         
-        // Label Text
+        // Label Text Animasi
         AnimatedSize(
           duration: const Duration(milliseconds: 400),
           curve: Curves.easeOutQuint,
@@ -341,6 +362,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen>
     );
   }
 }
+
+// --- FIXED NAV ITEM (STABIL & ANIMATIF) ---
 class _FixedNavItem extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -360,25 +383,37 @@ class _FixedNavItem extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: Container(
-        width: 60, 
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        width: 60,
+        // Area sentuh vertikal diperbesar untuk UX
+        padding: const EdgeInsets.symmetric(vertical: 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // 1. ICON
-            AnimatedScale(
-              scale: isSelected ? 1.1 : 1.0,
+            // 1. ICON dengan Animasi Warna & Skala
+            TweenAnimationBuilder<Color?>(
               duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOutBack,
-              child: Icon(
-                icon,
-                size: 26,
-                color: isSelected ? AppColors.primary : AppColors.textMuted,
+              tween: ColorTween(
+                begin: AppColors.textMuted,
+                end: isSelected ? AppColors.primary : AppColors.textMuted,
               ),
+              builder: (context, color, child) {
+                return AnimatedScale(
+                  scale: isSelected ? 1.2 : 1.0, // Efek pop saat aktif
+                  duration: const Duration(milliseconds: 300),
+                  curve: Curves.easeOutBack,
+                  child: Icon(
+                    icon,
+                    size: 26,
+                    color: color,
+                  ),
+                );
+              },
             ),
             
             const SizedBox(height: 4),
+            
+            // 2. TEXT LABEL (Fade In/Out)
             AnimatedOpacity(
               duration: const Duration(milliseconds: 300),
               opacity: isSelected ? 1.0 : 0.0,
@@ -386,8 +421,9 @@ class _FixedNavItem extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   fontSize: 10,
-                  fontWeight: FontWeight.w700,
+                  fontWeight: FontWeight.w800, // Bold agar terbaca jelas
                   color: AppColors.primary,
+                  letterSpacing: 0.2,
                 ),
                 maxLines: 1,
                 textAlign: TextAlign.center,

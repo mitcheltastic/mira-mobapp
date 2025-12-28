@@ -284,10 +284,29 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                   mainAxisAlignment:
                                       MainAxisAlignment.spaceBetween,
                                   children: [
-                                    TextButton(
+                                    OutlinedButton(
                                       onPressed: _currentIndex == 0
                                           ? _finishOnboarding
                                           : _goToPrevious,
+                                      style: OutlinedButton.styleFrom(
+                                        // Memberikan warna border yang halus agar tidak terlalu mencolok
+                                        side: BorderSide(
+                                          color: const Color.fromARGB(0, 255, 255, 255).withValues(
+                                            alpha: 0.3,
+                                          ),
+                                          width: 1.5,
+                                        ),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal:
+                                              32, // Sedikit lebih ramping dari tombol Next
+                                          vertical: 16,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            20,
+                                          ), // Radius sama dengan Next
+                                        ),
+                                      ),
                                       child: Text(
                                         _currentIndex == 0 ? "Skip" : "Back",
                                         style: const TextStyle(
