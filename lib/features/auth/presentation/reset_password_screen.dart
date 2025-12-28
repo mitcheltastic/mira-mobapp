@@ -2,29 +2,33 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
-// 1. Add Imports
-import '../data/auth_repository.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-// Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
 import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
-import 'reset_password_screen.dart';
+import '../data/auth_repository.dart';
+import 'login_screen.dart';
 
-class ForgotPasswordScreen extends StatefulWidget {
-  const ForgotPasswordScreen({super.key});
+class ResetPasswordScreen extends StatefulWidget {
+  final String email; // We pass the email from the previous screen
+
+  const ResetPasswordScreen({super.key, required this.email});
 
   @override
-  State<ForgotPasswordScreen> createState() => _ForgotPasswordScreenState();
+  State<ResetPasswordScreen> createState() => _ResetPasswordScreenState();
 }
 
-class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
+class _ResetPasswordScreenState extends State<ResetPasswordScreen>
     with TickerProviderStateMixin {
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
 
-  // 2. ADD CONTROLLER & LOADING STATE
-  final TextEditingController _emailController = TextEditingController();
+  // Controllers
+  final TextEditingController _codeController = TextEditingController();
+  final TextEditingController _newPassController = TextEditingController();
+  final TextEditingController _confirmPassController = TextEditingController();
+
   bool _isLoading = false;
 
   late AnimationController _formController;
@@ -67,46 +71,65 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
   @override
   void dispose() {
-    // 3. DISPOSE EVERYTHING
-    _emailController.dispose();
+    _codeController.dispose();
+    _newPassController.dispose();
+    _confirmPassController.dispose();
     _bgController.dispose();
     _formController.dispose();
     super.dispose();
   }
 
-  // 4. LOGIC TO HANDLE RESET
-  Future<void> _handleReset() async {
-    if (_emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter your email address")),
-      );
+  Future<void> _handleResetPassword() async {
+    // 1. Validation
+    if (_codeController.text.length < 6) {
+      _showError("Please enter the 6-digit code");
+      return;
+    }
+    if (_newPassController.text.isEmpty) {
+      _showError("Please enter a new password");
+      return;
+    }
+    if (_newPassController.text != _confirmPassController.text) {
+      _showError("Passwords do not match");
       return;
     }
 
     setState(() => _isLoading = true);
 
     try {
-      // Call Supabase
-      await AuthRepository().sendPasswordResetEmail(
-        _emailController.text.trim(),
+      // 2. Call Repository
+      await AuthRepository().verifyRecoveryCodeAndResetPassword(
+        email: widget.email,
+        token: _codeController.text.trim(),
+        newPassword: _newPassController.text.trim(),
       );
 
-      // If successful, show the dialog
-      if (mounted) {
-        _showSuccessDialog(context);
-      }
-    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error: ${e.toString()}"),
-            backgroundColor: AppColors.error,
+          const SnackBar(
+            content: Text("Password updated! Please login."),
+            backgroundColor: AppColors.success,
           ),
         );
+
+        // 3. Go to Login Screen (Clear stack)
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const LoginScreen()),
+          (route) => false,
+        );
       }
+    } catch (e) {
+      if (mounted) _showError("Error: ${e.toString()}");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
+    );
   }
 
   @override
@@ -129,7 +152,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
+                physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -154,19 +177,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                               end: Alignment.bottomRight,
                             ).createShader(bounds),
                             child: const Text(
-                              "Forgot Password?",
+                              "Secure Your Account",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 26,
+                                fontSize: 24,
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
-                                letterSpacing: -0.5,
                               ),
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            "Don't worry, it happens to the best of us.",
+                            "Enter the code sent to ${widget.email}",
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
@@ -207,86 +229,58 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                "Enter your email",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textMain.withValues(
-                                    alpha: 0.8,
-                                  ),
-                                ),
+                              // 1. CODE INPUT
+                              const Text(
+                                "Recovery Code",
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                "We will send a reset link to your registered email.",
-                                style: TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textMuted.withValues(
-                                    alpha: 0.7,
-                                  ),
-                                  height: 1.4,
-                                ),
-                              ),
-                              const SizedBox(height: 24),
-
-                              // 5. CONNECT CONTROLLER
                               MiraTextField(
-                                controller: _emailController,
-                                hintText: "Email Address",
-                                icon: Icons.alternate_email_rounded,
-                                keyboardType: TextInputType.emailAddress,
+                                controller: _codeController,
+                                hintText: "6-Digit Code",
+                                icon: Icons.key_rounded,
+                                keyboardType: TextInputType.number,
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // 2. NEW PASSWORD
+                              const Text(
+                                "New Password",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              MiraTextField(
+                                controller: _newPassController,
+                                hintText: "New Password",
+                                icon: Icons.lock_outline,
+                                isPassword: true,
+                              ),
+
+                              const SizedBox(height: 16),
+
+                              // 3. CONFIRM PASSWORD
+                              const Text(
+                                "Confirm Password",
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 8),
+                              MiraTextField(
+                                controller: _confirmPassController,
+                                hintText: "Re-type Password",
+                                icon: Icons.lock_reset,
+                                isPassword: true,
                               ),
 
                               const SizedBox(height: 24),
 
-                              // 6. CONNECT BUTTON
                               MiraButton(
                                 text: _isLoading
-                                    ? "Sending..."
-                                    : "Send Reset Link",
-                                onPressed: _isLoading ? null : _handleReset,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 32),
-
-                    // --- FOOTER ---
-                    FadeTransition(
-                      opacity: _fadeAnimation,
-                      child: GestureDetector(
-                        onTap: () => Navigator.pop(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 24,
-                            vertical: 12,
-                          ),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: AppColors.textMuted.withValues(alpha: 0.1),
-                            ),
-                          ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.arrow_back_rounded,
-                                size: 18,
-                                color: AppColors.textMuted,
-                              ),
-                              SizedBox(width: 8),
-                              Text(
-                                "Back to Login",
-                                style: TextStyle(
-                                  color: AppColors.textMain,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 14,
-                                ),
+                                    ? "Updating..."
+                                    : "Set New Password",
+                                onPressed: _isLoading
+                                    ? null
+                                    : _handleResetPassword,
                               ),
                             ],
                           ),
@@ -304,7 +298,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   }
 
   Widget _buildAnimatedBackground(Size size) {
-    // (Sama seperti kodemu sebelumnya)
     return Stack(
       children: [
         Positioned(
@@ -348,81 +341,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           child: Container(color: Colors.transparent),
         ),
       ],
-    );
-  }
-
-  void _showSuccessDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false, // User must click button to close
-      builder: (context) => Dialog(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.1),
-                blurRadius: 40,
-                offset: const Offset(0, 20),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.mark_email_read_rounded,
-                  color: Colors.green,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                "Check your email",
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textMain,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                "We have sent password recovery instructions to your email.",
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted, height: 1.5),
-              ),
-              const SizedBox(height: 24),
-              MiraButton(
-                text: "I have the code", // Changed text slightly
-                onPressed: () {
-                  Navigator.pop(context); // Close the dialog
-
-                  // Navigate to the Reset Screen
-                  Navigator.pushReplacement(
-                    // Use replacement so they can't go back
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ResetPasswordScreen(
-                        email: _emailController.text.trim(), // Pass the email!
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
