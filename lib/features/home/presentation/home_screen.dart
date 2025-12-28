@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Import Supabase
 import '../../../core/constant/app_colors.dart';
 
 // --- WIDGETS ---
@@ -8,7 +9,7 @@ import '../../dashboard/widgets/dashboard_header.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/tools_grid.dart';
 
-// --- SCREEN IMPORTS (Based on your folder structure) ---
+// --- SCREEN IMPORTS ---
 import '../../study_tools/presentation/ai_chat_screen.dart';
 import '../../study_tools/presentation/blurting_screen.dart';
 import '../../study_tools/presentation/eisenhower_screen.dart';
@@ -31,10 +32,14 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
-  bool _isSearching = false;
 
+  // State UI
+  bool _isSearching = false;
   late AnimationController _bgController;
   late Animation<double> _bgAnimation;
+
+  // State Data (Dari Supabase)
+  String _userName = "Friend"; // Default sebelum load
 
   // --- GLOBAL SEARCH MASTER DATA ---
   final List<Map<String, dynamic>> _masterSearchData = [
@@ -117,8 +122,14 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
+
+    // 1. Panggil data user (Fitur Teman)
+    _getUserProfile();
+
+    // 2. Setup Search Listener (Fitur Kamu)
     _searchController.addListener(_onSearchChanged);
 
+    // 3. Setup Animasi Background (Fitur Kamu)
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
@@ -130,6 +141,30 @@ class _HomeScreenState extends State<HomeScreen>
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
   }
 
+  // --- FUNGSI SUPABASE (Milik Teman) ---
+  Future<void> _getUserProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final data = await Supabase.instance.client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+
+        if (mounted) {
+          setState(() {
+            String fullName = data['full_name'] ?? "Friend";
+            _userName = fullName.split(' ')[0]; // Ambil nama depan
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching profile: $e");
+    }
+  }
+
+  // --- FUNGSI SEARCH (Milik Kamu) ---
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -155,17 +190,17 @@ class _HomeScreenState extends State<HomeScreen>
     });
   }
 
+  void _clearSearch() {
+    _searchController.clear();
+    FocusScope.of(context).unfocus();
+  }
+
   @override
   void dispose() {
     _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
     _bgController.dispose();
     super.dispose();
-  }
-
-  void _clearSearch() {
-    _searchController.clear();
-    FocusScope.of(context).unfocus();
   }
 
   @override
@@ -181,14 +216,19 @@ class _HomeScreenState extends State<HomeScreen>
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
+          // Background Animation (Fitur Kamu)
           _buildBackgroundDecoration(),
 
           SafeArea(
             bottom: false,
             child: Column(
               children: [
+                // Header (Digabung: Layout Kamu + Data Teman)
                 if (!_isSearching) ...[
-                  const DashboardHeader(userName: "Hilmy", isPro: true),
+                  DashboardHeader(
+                    userName: _userName,
+                    isPro: true,
+                  ), // Pakai _userName dari Supabase
                   const SizedBox(height: 8),
                 ] else ...[
                   const SizedBox(height: 20),
@@ -232,6 +272,9 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(height: 18),
+
+          // Gunakan FocusSection (Design Kamu) atau FocusCard (Design Teman)
+          // Disini saya pakai FocusSection (asumsi kamu punya widget ini di folder dashboard)
           const FocusSection(),
 
           const SizedBox(height: 36),
@@ -386,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen>
           fontSize: 14,
         ),
         decoration: InputDecoration(
-          hintText: "Search",
+          hintText: "Search features...",
           hintStyle: TextStyle(
             color: AppColors.textMuted.withValues(alpha: 0.5),
             fontSize: 14,

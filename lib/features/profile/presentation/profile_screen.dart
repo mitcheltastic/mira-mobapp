@@ -2,12 +2,17 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Import Supabase
+
 import '../../../core/constant/app_colors.dart';
 import '../../onboarding/presentation/welcome_screen.dart';
-import '../widgets/account_settings_screen.dart'; // Pastikan path sesuai
-import '../widgets/subscription_screen.dart'; // Pastikan path sesuai
-import '../widgets/help_support_screen.dart'; // Pastikan path sesuai
-import '../widgets/security_settings_screen.dart'; // <--- TAMBAHKAN IMPORT INI
+import '../../auth/data/auth_repository.dart'; // Import Repo untuk Logout
+
+// Import Sub-screens
+import '../widgets/account_settings_screen.dart';
+import '../widgets/subscription_screen.dart';
+import '../widgets/help_support_screen.dart';
+import '../widgets/security_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -16,10 +21,17 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
+  // --- STATE VARIABLES ---
   final bool isPro = true;
   File? _selectedImage;
-  
+
+  // Data User (Dari Supabase)
+  String _fullName = "Loading...";
+  String _email = "Loading...";
+
+  // Animation Controllers
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
@@ -27,14 +39,25 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   @override
   void initState() {
     super.initState();
+
+    // 1. Setup Animasi
     _controller = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
     );
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    _slideAnimation = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
-    
-    _controller.forward(); 
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeOut));
+
+    _controller.forward();
+
+    // 2. Ambil Data Profil
+    _getProfileData();
   }
 
   @override
@@ -43,14 +66,48 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     super.dispose();
   }
 
+  // --- FUNGSI DATA (MERGED: SUPABASE) ---
+  Future<void> _getProfileData() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        // Ambil Email
+        setState(() {
+          _email = user.email ?? "No Email";
+        });
+
+        // Ambil Nama dari tabel profiles
+        final data = await Supabase.instance.client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+
+        if (mounted) {
+          setState(() {
+            _fullName = data['full_name'] ?? "User";
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading profile: $e");
+      if (mounted) {
+        setState(() {
+          _fullName = "Hilmy Baihaqi"; // Fallback jika error
+        });
+      }
+    }
+  }
+
+  // --- FUNGSI GAMBAR (MERGED: YOUR CODE) ---
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? image = await picker.pickImage(
-        source: ImageSource.gallery, 
-        imageQuality: 50
+        source: ImageSource.gallery,
+        imageQuality: 50,
       );
-      
+
       if (image != null) {
         setState(() {
           _selectedImage = File(image.path);
@@ -61,18 +118,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               content: const Text("Foto profil berhasil diperbarui!"),
               backgroundColor: Colors.green,
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           );
         }
       }
     } catch (e) {
       debugPrint("Error picking image: $e");
-      if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text("Gagal membuka galeri. Pastikan run di Emulator/HP.")),
-          );
-      }
     }
   }
 
@@ -81,18 +135,27 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC), 
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         centerTitle: true,
         title: const Text(
           "My Profile",
-          style: TextStyle(color: AppColors.textMain, fontWeight: FontWeight.bold, fontSize: 18),
+          style: TextStyle(
+            color: AppColors.textMain,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
         ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.only(left: 24, right: 24, top: 10, bottom: 140),
+        padding: const EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 10,
+          bottom: 140,
+        ),
         physics: const BouncingScrollPhysics(),
         child: FadeTransition(
           opacity: _fadeAnimation,
@@ -101,7 +164,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
             child: Column(
               children: [
                 const SizedBox(height: 20),
-                
+
                 // --- 1. PROFILE PICTURE SECTION ---
                 Center(
                   child: Stack(
@@ -114,12 +177,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              // FIX: withValues
+                              // FIX: withValues (Flutter Update)
                               color: AppColors.primary.withValues(alpha: 0.2),
                               blurRadius: 20,
                               spreadRadius: 5,
-                            )
-                          ]
+                            ),
+                          ],
                         ),
                       ),
                       GestureDetector(
@@ -134,7 +197,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             backgroundColor: Colors.grey[200],
                             backgroundImage: _selectedImage != null
                                 ? FileImage(_selectedImage!) as ImageProvider
-                                : const NetworkImage('https://i.pravatar.cc/300'),
+                                : const NetworkImage(
+                                    'https://i.pravatar.cc/300',
+                                  ),
                           ),
                         ),
                       ),
@@ -148,44 +213,51 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                             border: Border.all(color: Colors.white, width: 3),
                             boxShadow: [
                               BoxShadow(
-                                // FIX: withValues
                                 color: Colors.black.withValues(alpha: 0.1),
                                 blurRadius: 5,
-                                offset: const Offset(0, 3)
-                              )
-                            ]
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
-                          child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                          child: const Icon(
+                            Icons.camera_alt_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: 16),
-                const Text(
-                  "Hilmy Baihaqi",
-                  style: TextStyle(
-                    fontSize: 24, 
-                    fontWeight: FontWeight.w800, 
+
+                // --- DATA NAMA & EMAIL DARI SUPABASE ---
+                Text(
+                  _fullName, // Menggunakan variabel state
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.textMain,
-                    letterSpacing: -0.5
+                    letterSpacing: -0.5,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    // FIX: withValues
-                    color: Colors.blueGrey.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20)
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 4,
                   ),
-                  child: const Text(
-                    "hilmy@telkomuniversity.ac.id",
-                    style: TextStyle(
-                      fontSize: 13, 
+                  decoration: BoxDecoration(
+                    color: Colors.blueGrey.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    _email, // Menggunakan variabel state
+                    style: const TextStyle(
+                      fontSize: 13,
                       color: AppColors.textMuted,
-                      fontWeight: FontWeight.w500
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ),
@@ -194,25 +266,33 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
                 // --- 2. SUBSCRIPTION CARD ---
                 GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SubscriptionScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => const SubscriptionScreen(),
+                    ),
+                  ),
                   child: Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(24),
                     decoration: BoxDecoration(
-                      gradient: isPro 
-                        ? const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF059669), Color(0xFF10B981)]) 
-                        : const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF1E293B), Color(0xFF334155)]),
+                      gradient: isPro
+                          ? const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF059669), Color(0xFF10B981)],
+                            )
+                          : const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF1E293B), Color(0xFF334155)],
+                            ),
                       borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          // FIX: withValues
-                          color: isPro ? const Color(0xFF10B981).withValues(alpha: 0.4) : Colors.black.withValues(alpha: 0.2),
+                          color: isPro
+                              ? const Color(0xFF10B981).withValues(alpha: 0.4)
+                              : Colors.black.withValues(alpha: 0.2),
                           blurRadius: 20,
                           offset: const Offset(0, 10),
                         ),
@@ -223,12 +303,13 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                         Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
-                            // FIX: withValues
                             color: Colors.white.withValues(alpha: 0.2),
                             borderRadius: BorderRadius.circular(16),
                           ),
                           child: Icon(
-                            isPro ? Icons.verified_user_rounded : Icons.diamond_outlined,
+                            isPro
+                                ? Icons.verified_user_rounded
+                                : Icons.diamond_outlined,
                             color: Colors.white,
                             size: 28,
                           ),
@@ -241,38 +322,44 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                               Text(
                                 isPro ? "Pro Member Active" : "Go Premium",
                                 style: const TextStyle(
-                                  color: Colors.white, 
-                                  fontWeight: FontWeight.bold, 
-                                  fontSize: 17
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 17,
                                 ),
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                isPro ? "Enjoy all features without limits" : "Unlock AI features & more",
+                                isPro
+                                    ? "Enjoy all features without limits"
+                                    : "Unlock AI features & more",
                                 style: TextStyle(
-                                  // FIX: withValues
-                                  color: Colors.white.withValues(alpha: 0.8), 
-                                  fontSize: 12
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 12,
                                 ),
                               ),
                             ],
                           ),
                         ),
                         Container(
-                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                           decoration: BoxDecoration(
-                             color: Colors.white,
-                             borderRadius: BorderRadius.circular(12)
-                           ),
-                           child: Text(
-                             isPro ? "Manage" : "Upgrade", 
-                             style: TextStyle(
-                               color: isPro ? const Color(0xFF059669) : const Color(0xFF1E293B), 
-                               fontSize: 12, 
-                               fontWeight: FontWeight.bold
-                             ),
-                           ),
-                        )
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            isPro ? "Manage" : "Upgrade",
+                            style: TextStyle(
+                              color: isPro
+                                  ? const Color(0xFF059669)
+                                  : const Color(0xFF1E293B),
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -289,8 +376,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       title: "Personal Info",
                       icon: Icons.person_outline_rounded,
                       color: Colors.blue,
-                      // Navigasi ke Account Settings
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AccountSettingsScreen())),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const AccountSettingsScreen(),
+                        ),
+                      ),
                     ),
                     _buildDivider(),
                     _buildMenuItem(
@@ -298,8 +389,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       title: "Security & Password",
                       icon: Icons.lock_outline_rounded,
                       color: Colors.purple,
-                      // IMPLEMENTASI: Navigasi ke Security Settings
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SecuritySettingsScreen())),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const SecuritySettingsScreen(),
+                        ),
+                      ),
                     ),
                     _buildDivider(),
                     _buildMenuItem(
@@ -322,8 +417,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       title: "Help & Support",
                       icon: Icons.headset_mic_outlined,
                       color: Colors.orange,
-                      // Navigasi ke Help Support
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HelpSupportScreen())),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (c) => const HelpSupportScreen(),
+                        ),
+                      ),
                     ),
                     _buildDivider(),
                     _buildMenuItem(
@@ -388,7 +487,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            // FIX: withValues
             color: Colors.black.withValues(alpha: 0.03),
             blurRadius: 15,
             offset: const Offset(0, 5),
@@ -421,7 +519,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  // FIX: withValues
                   color: color.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
@@ -446,7 +543,11 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 const SizedBox(width: 8),
               ],
               if (showArrow)
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFFCBD5E1), size: 22),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFFCBD5E1),
+                  size: 22,
+                ),
             ],
           ),
         ),
@@ -456,9 +557,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   Widget _buildDivider() {
     return const Divider(
-      height: 1, 
-      thickness: 0.5, 
-      color: Color(0xFFF1F5F9), 
+      height: 1,
+      thickness: 0.5,
+      color: Color(0xFFF1F5F9),
       indent: 70,
       endIndent: 20,
     );
@@ -470,26 +571,44 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Log Out"),
-        content: const Text("Are you sure you want to log out from this account?"),
+        content: const Text(
+          "Are you sure you want to log out from this account?",
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
-            onPressed: () {
-               Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                (route) => false,
-              );
+            onPressed: () async {
+              // 1. Panggil Fungsi SignOut dari Repository (Kode Teman)
+              await AuthRepository().signOut();
+
+              if (context.mounted) {
+                // 2. Navigasi ke Welcome Screen
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const WelcomeScreen(),
+                  ),
+                  (route) => false,
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               elevation: 0,
             ),
-            child: const Text("Log Out", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text(
+              "Log Out",
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),

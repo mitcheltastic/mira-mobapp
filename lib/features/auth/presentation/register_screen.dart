@@ -9,6 +9,10 @@ import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
 import 'login_screen.dart';
 
+// Make sure this file actually exists in: lib/features/auth/data/auth_repository.dart
+import '../presentation/otp_screen.dart';
+import '../data/auth_repository.dart';
+
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -19,9 +23,18 @@ class RegisterScreen extends StatefulWidget {
 class _RegisterScreenState extends State<RegisterScreen>
     with TickerProviderStateMixin {
   late AnimationController _bgController;
-  late Animation<double> _bgScaleAnimation;
 
-  // Controller untuk Form Animation
+  // 1. TEXT CONTROLLERS
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
+
+  // 2. LOADING STATE
+  bool _isLoading = false;
+
+  late Animation<double> _bgScaleAnimation;
   late AnimationController _formController;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
@@ -30,7 +43,7 @@ class _RegisterScreenState extends State<RegisterScreen>
   void initState() {
     super.initState();
 
-    // 1. Background Animation
+    // Background Animation
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
@@ -41,7 +54,7 @@ class _RegisterScreenState extends State<RegisterScreen>
       end: 1.15,
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
 
-    // 2. Form Entrance Animation
+    // Form Entrance Animation
     _formController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -60,11 +73,70 @@ class _RegisterScreenState extends State<RegisterScreen>
     _formController.forward();
   }
 
+  // 3. SINGLE DISPOSE METHOD (Merged)
   @override
   void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
     _bgController.dispose();
     _formController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleRegister() async {
+    // 1. Basic Validation
+    if (_passwordController.text != _confirmPasswordController.text) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Passwords do not match!")));
+      return;
+    }
+
+    // 2. Start Loading State
+    setState(() => _isLoading = true);
+
+    try {
+      // 3. Call the Repository
+      final authRepo = AuthRepository();
+      await authRepo.signUp(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+        fullName: _nameController.text.trim(),
+      );
+
+      // 4. Handle Success
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Code sent! Check your email.")),
+        );
+
+        // NEW: Navigate to OTP Screen
+        Navigator.push(
+          // Use push so they can go back if email was wrong
+          context,
+          MaterialPageRoute(
+            builder: (context) => OtpScreen(
+              email: _emailController.text.trim(), // Pass the email!
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: ${e.toString()}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -80,32 +152,24 @@ class _RegisterScreenState extends State<RegisterScreen>
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      // resizeToAvoidBottomInset: true memastikan layout naik saat keyboard muncul
-      // meskipun scroll kita matikan.
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // LAYER 1: Background Mesh
           _buildAnimatedBackground(size),
-
-          // LAYER 2: Main Content
           SafeArea(
             child: Center(
-              // SingleChildScrollView tetap ada untuk menghindari error overflow saat keyboard muncul,
-              // TAPI user tidak bisa scroll manual karena physics dimatikan.
               child: SingleChildScrollView(
                 physics:
-                    const NeverScrollableScrollPhysics(), // <--- INI KUNCINYA (User gabisa scroll)
+                    const NeverScrollableScrollPhysics(), // MERGED: User gabisa scroll manual
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // --- HEADER SECTION ---
+                    // --- HEADER ---
                     FadeTransition(
                       opacity: _fadeAnimation,
                       child: Column(
                         children: [
-                          // Lottie Icon (Diperkecil agar muat 1 layar)
                           SizedBox(
                             height: 80,
                             child: Lottie.asset(
@@ -113,8 +177,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                               fit: BoxFit.contain,
                             ),
                           ),
-                          const SizedBox(height: 8), // Jarak diperpadat
-                          // Gradient Title
+                          const SizedBox(height: 8),
                           ShaderMask(
                             shaderCallback: (bounds) => const LinearGradient(
                               colors: [AppColors.textMain, AppColors.primary],
@@ -125,8 +188,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                               "Join the Ecosystem",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize:
-                                    24, // Font sedikit lebih kecil agar compact
+                                fontSize: 24, // MERGED: Font size 24
                                 fontWeight: FontWeight.w900,
                                 color: Colors.white,
                                 letterSpacing: -0.5,
@@ -146,8 +208,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                       ),
                     ),
 
-                    const SizedBox(height: 20), // Jarak ke form
-                    // --- GLASS CARD FORM ---
+                    const SizedBox(height: 20),
+
+                    // --- FORM ---
                     SlideTransition(
                       position: _slideAnimation,
                       child: FadeTransition(
@@ -157,7 +220,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                           constraints: const BoxConstraints(maxWidth: 450),
                           padding: const EdgeInsets.all(
                             24,
-                          ), // Padding dalam card dikurangi (dari 32 ke 24)
+                          ), // MERGED: Padding 24
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(28),
@@ -176,8 +239,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize
-                                .min, // Agar card memeluk konten seadanya
+                            mainAxisSize:
+                                MainAxisSize.min, // MERGED: MainAxisSize.min
                             children: [
                               const Text(
                                 "Create Account",
@@ -189,28 +252,31 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ),
                               const SizedBox(height: 20),
 
-                              // Form Fields (Jarak antar field diperpadat 16 -> 12)
-                              const MiraTextField(
+                              MiraTextField(
+                                controller: _nameController,
                                 hintText: "Full Name",
                                 icon: Icons.person_outline_rounded,
                               ),
                               const SizedBox(height: 12),
 
-                              const MiraTextField(
+                              MiraTextField(
+                                controller: _emailController,
                                 hintText: "Email Address",
                                 icon: Icons.email_outlined,
                                 keyboardType: TextInputType.emailAddress,
                               ),
                               const SizedBox(height: 12),
 
-                              const MiraTextField(
+                              MiraTextField(
+                                controller: _passwordController,
                                 hintText: "Password",
                                 icon: Icons.lock_outline_rounded,
                                 isPassword: true,
                               ),
                               const SizedBox(height: 12),
 
-                              const MiraTextField(
+                              MiraTextField(
+                                controller: _confirmPasswordController,
                                 hintText: "Confirm Password",
                                 icon: Icons.lock_reset_rounded,
                                 isPassword: true,
@@ -219,10 +285,14 @@ class _RegisterScreenState extends State<RegisterScreen>
                               const SizedBox(height: 24),
 
                               MiraButton(
-                                text: "Register",
-                                onPressed: () {
-                                  debugPrint("Register Clicked");
-                                },
+                                text: _isLoading
+                                    ? "Registering..."
+                                    : "Register",
+                                onPressed: _isLoading
+                                    ? null
+                                    : () {
+                                        _handleRegister();
+                                      },
                               ),
                             ],
                           ),
@@ -276,7 +346,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     );
   }
 
-  // --- Background Helper (Sama Persis) ---
   Widget _buildAnimatedBackground(Size size) {
     return Stack(
       children: [
