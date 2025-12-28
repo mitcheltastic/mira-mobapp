@@ -4,7 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
 // 1. Import Repository & Supabase (if needed for specific exceptions)
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../data/auth_repository.dart';
+import 'package:local_auth/local_auth.dart';
 
 // Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
@@ -146,6 +148,139 @@ class _LoginScreenState extends State<LoginScreen>
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // --- PASTE THIS NEW FUNCTION HERE ---
+  Future<void> _googleSignIn() async {
+    // 1. Set loading state
+    setState(() => _isLoading = true);
+
+    try {
+      // 2. Setup Google Sign In
+      // IMPORTANT: Use the WEB Client ID you created in Google Cloud Console
+      const webClientId =
+          '95756928282-jnmgsvcusb26oql90mugkepbqe0qije3.apps.googleusercontent.com';
+
+      final GoogleSignIn googleSignIn = GoogleSignIn(
+        serverClientId: webClientId,
+      );
+
+      final googleUser = await googleSignIn.signIn();
+
+      // If user cancels the login window
+      if (googleUser == null) {
+        return;
+      }
+
+      final googleAuth = await googleUser.authentication;
+      final accessToken = googleAuth.accessToken;
+      final idToken = googleAuth.idToken;
+
+      if (idToken == null) {
+        throw 'No ID Token found.';
+      }
+
+      // 3. Send tokens to Supabase
+      await Supabase.instance.client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+        accessToken: accessToken,
+      );
+
+      // 4. Success! Navigate to Dashboard
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Google Login Successful!"),
+            backgroundColor: AppColors.success,
+          ),
+        );
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+          (route) => false,
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Google Login Failed: $error"),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      // 5. Stop loading state
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+  // --- END OF NEW FUNCTION ---
+
+  final LocalAuthentication auth = LocalAuthentication();
+
+  Future<void> _authenticateWithBiometrics() async {
+    // 1. Check if the device supports biometrics
+    final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+    final bool canAuthenticate =
+        canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+
+    if (!canAuthenticate) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Biometrics not available on this device'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 2. Check if the user is actually logged in (Supabase session exists)
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Please log in with Email or Google first to enable biometrics.',
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    // 3. Trigger the Fingerprint Prompt
+    try {
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: 'Please authenticate to access your account',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        // 4. Success! Navigate to Home
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/home',
+          ); // Check your route name!
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
     }
   }
@@ -304,9 +439,45 @@ class _LoginScreenState extends State<LoginScreen>
                               const SizedBox(height: 20),
 
                               // 7. CONNECT BUTTON LOGIC
-                              MiraButton(
-                                text: _isLoading ? "Logging In..." : "Log In",
-                                onPressed: _isLoading ? null : _handleLogin,
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // Your existing Login Button logic...
+                                  Expanded(
+                                    child: MiraButton(
+                                      text: _isLoading
+                                          ? "Logging In..."
+                                          : "Log In",
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _handleLogin,
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 16),
+
+                                  // --- NEW BIOMETRIC BUTTON ---
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: AppColors.primary.withValues(
+                                          alpha: 0.2,
+                                        ), // <--- This fixes it
+                                      ),
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.fingerprint,
+                                        size: 28,
+                                        color: AppColors.primary,
+                                      ),
+                                      onPressed: _authenticateWithBiometrics,
+                                      tooltip: "Login with Fingerprint",
+                                    ),
+                                  ),
+                                ],
                               ),
 
                               const SizedBox(height: 24),
@@ -332,9 +503,7 @@ class _LoginScreenState extends State<LoginScreen>
                                     ),
                                     elevation: 0,
                                   ),
-                                  onPressed: () {
-                                    // Logika Login Google Disini
-                                  },
+                                  onPressed: _isLoading ? null : _googleSignIn,
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
