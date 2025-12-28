@@ -1,11 +1,9 @@
-import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// Import sesuai struktur project Anda
+// --- IMPORTS ---
 import '../../../core/constant/app_colors.dart';
-import '../../../core/widgets/mira_button.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../auth/presentation/register_screen.dart';
 
@@ -18,356 +16,365 @@ class WelcomeScreen extends StatefulWidget {
 
 class _WelcomeScreenState extends State<WelcomeScreen>
     with TickerProviderStateMixin {
-  // Controller untuk background bergerak
-  late AnimationController _backgroundController;
-  // Controller untuk elemen UI masuk
-  late AnimationController _entranceController;
+  late AnimationController _controller;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _scaleAnimation;
 
-  // Variabel animasi per elemen
-  late Animation<double> _fadeTitle;
-  late Animation<Offset> _slideTitle;
-  late Animation<double> _fadeDesc;
-  late Animation<Offset> _slideDesc;
-  late Animation<double> _fadeBtn;
-  late Animation<Offset> _slideBtn;
+  final Color _lightPurpleBtnColor = const Color(0xFF9F7AEA);
 
   @override
   void initState() {
     super.initState();
-
-    // 1. Setup Animasi Background (Looping selamanya)
-    _backgroundController = AnimationController(
+    _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
-    )..repeat(reverse: true);
-
-    // 2. Setup Animasi Masuk (Sekali jalan)
-    _entranceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1800),
+      duration: const Duration(milliseconds: 1500),
     );
 
-    // Definisi Staggered Animation (Muncul bertahap)
-    _fadeTitle = Tween<double>(begin: 0, end: 1).animate(
+    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
       CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.0, 0.4, curve: Curves.easeOut),
+        parent: _controller,
+        curve: const Interval(0.3, 1.0, curve: Curves.easeOut),
       ),
     );
-    _slideTitle = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
-        .animate(
+
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
           CurvedAnimation(
-            parent: _entranceController,
-            curve: const Interval(0.0, 0.4, curve: Curves.easeOutCubic),
+            parent: _controller,
+            curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic),
           ),
         );
 
-    _fadeDesc = Tween<double>(begin: 0, end: 1).animate(
+    _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.3, 0.6, curve: Curves.easeOut),
+        parent: _controller,
+        curve: const Interval(0.0, 0.7, curve: Curves.elasticOut),
       ),
     );
-    _slideDesc = Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
-        .animate(
-          CurvedAnimation(
-            parent: _entranceController,
-            curve: const Interval(0.3, 0.6, curve: Curves.easeOutCubic),
-          ),
-        );
 
-    _fadeBtn = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(
-        parent: _entranceController,
-        curve: const Interval(0.5, 1.0, curve: Curves.easeOut),
-      ),
-    );
-    _slideBtn = Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero)
-        .animate(
-          CurvedAnimation(
-            parent: _entranceController,
-            curve: const Interval(0.5, 1.0, curve: Curves.easeOutCubic),
-          ),
-        );
-
-    // Mulai animasi masuk
-    _entranceController.forward();
+    _controller.forward();
   }
 
   @override
   void dispose() {
-    _backgroundController.dispose();
-    _entranceController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Mengatur status bar icon menjadi gelap/terang sesuai kebutuhan
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Stack(
-        children: [
-          // LAYER 1: The "Living" Background (Tetap Full Screen)
-          // Ini memberikan atmosfer ke seluruh layar device
-          AnimatedBuilder(
-            animation: _backgroundController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: BackgroundOrbPainter(
-                  animationValue: _backgroundController.value,
-                  // Menggunakan .withValues() pengganti .withOpacity()
-                  color1: AppColors.secondary.withValues(alpha: 0.2),
-                  color2: AppColors.primary.withValues(alpha: 0.15),
-                ),
-                size: Size.infinite,
-              );
-            },
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              const Color(0xFFE0E7FF),
+              const Color(0xFFFAE8FF),
+              const Color(0xFFFFE4E6),
+              AppColors.surface,
+            ],
+            stops: const [0.0, 0.4, 0.7, 1.0],
           ),
+        ),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 450),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
 
-          // LAYER 2: Glassmorphism Blur (Efek kaca buram)
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-            child: Container(color: Colors.transparent),
-          ),
-
-          // LAYER 3: Main Content (DIBATASI LEBARNYA)
-          // Menggunakan SafeArea -> Center -> ConstrainedBox agar rapi di tablet/web
-          SafeArea(
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxWidth: 450, // Batas lebar maksimal agar tidak "gepeng"
+                _buildColoredBall(
+                  top: 40,
+                  right: -80,
+                  size: 280,
+                  color: AppColors.secondary,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Spacer(flex: 2),
 
-                      // --- HEADER TITLE SECTION ---
-                      FadeTransition(
-                        opacity: _fadeTitle,
-                        child: SlideTransition(
-                          position: _slideTitle,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Garis dekoratif kecil (Visual Anchor)
-                              Container(
-                                width: 40,
-                                height: 4,
-                                decoration: BoxDecoration(
-                                  color: AppColors.secondary,
-                                  borderRadius: BorderRadius.circular(2),
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-                              const Text(
-                                "Welcome to",
-                                style: TextStyle(
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.w300,
-                                  color: AppColors.textMain,
-                                  letterSpacing: 1.5,
-                                ),
-                              ),
-                              // Gradient Text "MIRA"
-                              ShaderMask(
-                                shaderCallback: (bounds) =>
-                                    const LinearGradient(
-                                      colors: [
-                                        AppColors.textMain,
-                                        AppColors.secondary,
-                                      ],
-                                      begin: Alignment.topLeft,
-                                      end: Alignment.bottomRight,
-                                    ).createShader(bounds),
-                                child: const Text(
-                                  "MIRA",
-                                  style: TextStyle(
-                                    fontSize: 72,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors
-                                        .white, // Harus putih agar shader terlihat
-                                    height: 0.9,
-                                    letterSpacing: -2,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                _buildColoredBall(
+                  top: 200,
+                  left: -60,
+                  size: 200,
+                  color: AppColors.primary,
+                ),
+
+                _buildColoredBall(
+                  top: 90,
+                  left: size.width > 450 ? 150 : size.width * 0.35,
+                  size: 90,
+                  color: AppColors.success,
+                ),
+                _buildColoredBall(
+                  bottom: size.height * 0.55,
+                  right: -40,
+                  size: 100,
+                  color: const Color(0xFFFCD34D),
+                ),
+
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: size.height * 0.60,
+                  child: SlideTransition(
+                    position: _slideAnimation,
+                    child: Stack(
+                      alignment: Alignment.bottomCenter,
+                      children: [
+                        Positioned.fill(
+                          child: CustomPaint(painter: CloudShadowPainter()),
                         ),
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // --- DESCRIPTION SECTION ---
-                      FadeTransition(
-                        opacity: _fadeDesc,
-                        child: SlideTransition(
-                          position: _slideDesc,
-                          child: Container(
-                            padding: const EdgeInsets.only(left: 16),
-                            decoration: BoxDecoration(
-                              border: Border(
-                                left: BorderSide(
-                                  color: AppColors.textMuted.withValues(
-                                    alpha: 0.3,
+                        ClipPath(
+                          clipper: OrganicCloudClipper(),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.65),
+                                border: Border(
+                                  top: BorderSide(
+                                    color: Colors.white.withValues(alpha: 0.4),
+                                    width: 1.5,
                                   ),
-                                  width: 2,
                                 ),
                               ),
                             ),
-                            child: const Text(
-                              "Your integrated ecosystem for mastering retention and academic success.",
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+
+                Positioned(
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(32.0, 0, 32.0, 50.0),
+                    child: SlideTransition(
+                      position: _slideAnimation,
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              child: const Text(
+                                "MIRA APP",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            const Text(
+                              "Together,\nwe learn better.",
+                              style: TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.w900,
+                                height: 1.0,
+                                color: AppColors.textMain,
+                                letterSpacing: -1.5,
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            const Text(
+                              "Join the ultimate ecosystem for retention and academic mastery.",
                               style: TextStyle(
                                 fontSize: 16,
                                 color: AppColors.textMuted,
-                                height: 1.6,
-                                fontWeight: FontWeight.w400,
+                                height: 1.5,
                               ),
                             ),
-                          ),
-                        ),
-                      ),
 
-                      const Spacer(flex: 3),
+                            const SizedBox(height: 32),
 
-                      // --- BUTTONS SECTION ---
-                      FadeTransition(
-                        opacity: _fadeBtn,
-                        child: SlideTransition(
-                          position: _slideBtn,
-                          child: Column(
-                            children: [
-                              // Tombol Utama dengan Glow Effect
-                              Container(
-                                width: double
-                                    .infinity, // Memastikan tombol fill width (sampai 450px)
-                                decoration: BoxDecoration(
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.primary.withValues(
-                                        alpha: 0.3,
-                                      ),
-                                      blurRadius: 20,
-                                      offset: const Offset(0, 8),
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppColors.primary,
+                                  foregroundColor: Colors.white,
+                                  elevation: 5,
+                                  shadowColor: _lightPurpleBtnColor.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (c) => const RegisterScreen(),
                                     ),
-                                  ],
-                                ),
-                                child: MiraButton(
-                                  text: "Get Started",
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const LoginScreen(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                              const SizedBox(height: 20),
-
-                              // Tombol Register Outline
-                              SizedBox(
-                                width: double.infinity,
-                                child: MiraButton(
-                                  text: "Create Account",
-                                  isOutline: true,
-                                  onPressed: () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (context) =>
-                                            const RegisterScreen(),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-
-                              const SizedBox(height: 30),
-
-                              Center(
-                                child: Text(
-                                  "Version 1.0.0",
+                                  );
+                                },
+                                child: const Text(
+                                  "Sign Up",
                                   style: TextStyle(
-                                    fontSize: 12,
-                                    color: AppColors.textMuted.withValues(
-                                      alpha: 0.5,
-                                    ),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+
+                            const SizedBox(height: 16),
+
+                            SizedBox(
+                              width: double.infinity,
+                              height: 56,
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: Colors.white.withValues(
+                                    alpha: 0.4,
+                                  ),
+                                  side: BorderSide(
+                                    color: AppColors.textMuted.withValues(
+                                      alpha: 0.2,
+                                    ),
+                                    width: 1.5,
+                                  ),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  foregroundColor: AppColors.textMain,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (c) => const LoginScreen(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  "Log In",
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 20),
-                    ],
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
           ),
-        ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildColoredBall({
+    double? top,
+    double? left,
+    double? right,
+    double? bottom,
+    required double size,
+    required Color color,
+  }) {
+    final softColor = color.withValues(alpha: 0.6);
+    final coreColor = color.withValues(alpha: 0.9);
+
+    return Positioned(
+      top: top,
+      left: left,
+      right: right,
+      bottom: bottom,
+      child: ScaleTransition(
+        scale: _scaleAnimation,
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [softColor, coreColor],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.3),
+                blurRadius: 30,
+                offset: const Offset(0, 10),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
 }
 
-// --- CLASS LUKISAN ABSTRAK (Custom Painter) ---
-// Bagian ini menggambar bola-bola gradient yang bergerak
-class BackgroundOrbPainter extends CustomPainter {
-  final double animationValue;
-  final Color color1;
-  final Color color2;
+class OrganicCloudClipper extends CustomClipper<Path> {
+  @override
+  Path getClip(Size size) {
+    var path = Path();
+    double w = size.width;
+    double h = size.height;
+    double waveH = 40.0;
 
-  BackgroundOrbPainter({
-    required this.animationValue,
-    required this.color1,
-    required this.color2,
-  });
+    path.moveTo(0, h);
+    path.lineTo(0, waveH + 20);
 
+    // Bentuk gelombang awan
+    path.quadraticBezierTo(w * 0.1, waveH - 20, w * 0.25, waveH + 10);
+    path.quadraticBezierTo(w * 0.5, waveH - 50, w * 0.75, waveH);
+    path.quadraticBezierTo(w * 0.9, waveH - 20, w, waveH + 10);
+
+    path.lineTo(w, h);
+    path.close();
+
+    return path;
+  }
+
+  @override
+  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
+}
+
+class CloudShadowPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
-    // MaskFilter untuk memberikan efek blur yang sangat halus pada bola
-    final paint = Paint()
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 60);
+    var path = OrganicCloudClipper().getClip(size);
+    var shadowPaint = Paint()
+      ..color = AppColors.shadow.withValues(alpha: 0.2)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 20);
 
-    // Orb 1 (Kanan Atas)
-    final offset1 = Offset(
-      size.width * 0.8 + (math.cos(animationValue * 2 * math.pi) * 30),
-      size.height * 0.1 + (math.sin(animationValue * 2 * math.pi) * 30),
-    );
-    paint.color = color1;
-    canvas.drawCircle(offset1, size.width * 0.4, paint);
-
-    // Orb 2 (Kiri Tengah)
-    final offset2 = Offset(
-      size.width * 0.1 + (math.sin(animationValue * 2 * math.pi) * 20),
-      size.height * 0.5 + (math.cos(animationValue * 2 * math.pi) * 40),
-    );
-    paint.color = color2;
-    canvas.drawCircle(offset2, size.width * 0.35, paint);
-
-    // Orb 3 (Kanan Bawah)
-    final offset3 = Offset(
-      size.width * 0.8 + (math.cos(animationValue * math.pi) * -20),
-      size.height * 0.85 + (math.sin(animationValue * math.pi) * -20),
-    );
-    paint.color = color1.withValues(alpha: 0.15);
-    canvas.drawCircle(offset3, size.width * 0.5, paint);
+    canvas.drawPath(path.shift(const Offset(0, 5)), shadowPaint);
   }
 
   @override
-  bool shouldRepaint(covariant BackgroundOrbPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
-  }
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/constant/app_colors.dart';
 import '../../../core/widgets/mira_text_field.dart';
-import '../presentation/widgets/note_editor_screen.dart';
-import 'widgets/note_card.dart';
+import '../widgets/note_editor_screen.dart';
+import '../widgets/note_card.dart';
 
 class SecondBrainScreen extends StatefulWidget {
   const SecondBrainScreen({super.key});

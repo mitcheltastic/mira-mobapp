@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../core/constant/app_colors.dart';
+import '../../../core/constant/app_colors.dart';
 
 class NoteEditorScreen extends StatelessWidget {
   // Jika null, berarti Mode Tambah Baru
