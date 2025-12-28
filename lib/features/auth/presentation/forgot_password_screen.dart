@@ -1,9 +1,9 @@
 import 'dart:ui';
-import 'dart:math'
-    as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lottie/lottie.dart';
 
+// Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
 import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
@@ -17,211 +17,177 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     with TickerProviderStateMixin {
-  late AnimationController _backgroundController;
-  late AnimationController _entranceController;
-  late Animation<double> _fadeAnimation;
+  late AnimationController _bgController;
+  late Animation<double> _bgScaleAnimation;
+
+  // Controller untuk Form Animation
+  late AnimationController _formController;
   late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Setup Background Animation
-    _backgroundController = AnimationController(
+    // 1. Background Animation
+    _bgController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 6),
     )..repeat(reverse: true);
 
-    // 2. Setup Entrance Animation
-    _entranceController = AnimationController(
+    _bgScaleAnimation = Tween<double>(begin: 1.0, end: 1.15).animate(
+      CurvedAnimation(parent: _bgController, curve: Curves.easeInOut),
+    );
+
+    // 2. Form Entrance Animation
+    _formController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1000),
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
     );
 
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.easeOut),
+      CurvedAnimation(parent: _formController, curve: Curves.easeOut),
     );
 
-    _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _entranceController,
-            curve: Curves.easeOutCubic,
-          ),
-        );
-
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.elasticOut),
-    );
-
-    _entranceController.forward();
+    _formController.forward();
   }
 
   @override
   void dispose() {
-    _backgroundController.dispose();
-    _entranceController.dispose();
+    _bgController.dispose();
+    _formController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
+
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFF8FAFC),
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // LAYER 1: Living Background (Menggunakan class Painter di bawah)
-          AnimatedBuilder(
-            animation: _backgroundController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: BackgroundOrbPainter(
-                  animationValue: _backgroundController.value,
-                  color1: AppColors.secondary.withValues(alpha: 0.2),
-                  color2: AppColors.primary.withValues(alpha: 0.15),
-                ),
-                size: Size.infinite,
-              );
-            },
-          ),
+          // LAYER 1: Background Mesh
+          _buildAnimatedBackground(size),
 
-          // LAYER 2: Backdrop Blur
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-            child: Container(color: Colors.transparent),
-          ),
-
-          // LAYER 3: Main Content
+          // LAYER 2: Main Content
           SafeArea(
             child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 450),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24.0,
-                    vertical: 16.0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Spacer agar konten tidak tertutup tombol back
-                      const SizedBox(height: 60),
-
-                      // --- Hero Icon (Glass Lock) ---
-                      Center(
-                        child: ScaleTransition(
-                          scale: _scaleAnimation,
-                          child: FadeTransition(
-                            opacity: _fadeAnimation,
-                            child: SizedBox(
-                              width: 140,
-                              height: 140,
-                              child: Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  // Glow
-                                  Container(
-                                    width: 100,
-                                    height: 100,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      boxShadow: [
-                                        BoxShadow(
-                                          color: AppColors.primary.withValues(
-                                            alpha: 0.3,
-                                          ),
-                                          blurRadius: 50,
-                                          spreadRadius: 10,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  // Glass Container
-                                  Container(
-                                    width: 120,
-                                    height: 120,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.white.withValues(alpha: 0.4),
-                                          Colors.white.withValues(alpha: 0.1),
-                                        ],
-                                      ),
-                                      border: Border.all(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.4,
-                                        ),
-                                        width: 1,
-                                      ),
-                                    ),
-                                    child: BackdropFilter(
-                                      filter: ImageFilter.blur(
-                                        sigmaX: 5,
-                                        sigmaY: 5,
-                                      ),
-                                      child: Center(
-                                        child: Container(
-                                          padding: const EdgeInsets.all(24),
-                                          decoration: BoxDecoration(
-                                            color: AppColors.surface.withValues(
-                                              alpha: 0.3,
-                                            ),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: const Icon(
-                                            Icons.lock_reset_rounded,
-                                            size: 48,
-                                            color: AppColors.primary,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(), // Scroll dikunci
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // --- HEADER ---
+                    FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        children: [
+                          // Lottie Icon
+                          SizedBox(
+                            height: 100,
+                            child: Lottie.asset(
+                              'assets/lottie/BookOpening.json',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          // Gradient Title
+                          ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [AppColors.textMain, AppColors.primary],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ).createShader(bounds),
+                            child: const Text(
+                              "Forgot Password?",
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
                               ),
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Don't worry, it happens to the best of us.",
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textMuted.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
 
-                      const SizedBox(height: 40),
+                    const SizedBox(height: 24),
 
-                      // --- Text & Form ---
-                      SlideTransition(
-                        position: _slideAnimation,
-                        child: FadeTransition(
-                          opacity: _fadeAnimation,
+                    // --- GLASS CARD FORM ---
+                    SlideTransition(
+                      position: _slideAnimation,
+                      child: FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(maxWidth: 450),
+                          padding: const EdgeInsets.all(28),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(32),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              width: 1.5,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                blurRadius: 40,
+                                offset: const Offset(0, 20),
+                                spreadRadius: -10,
+                              ),
+                            ],
+                          ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                "Forgot Password?",
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w800,
-                                  color: AppColors.textMain,
-                                  letterSpacing: -0.5,
-                                ),
-                              ),
-                              const SizedBox(height: 12),
                               Text(
-                                "Don't worry! It happens. Please enter the email address associated with your account.",
+                                "Enter your email",
                                 style: TextStyle(
                                   fontSize: 16,
-                                  color: AppColors.textMuted.withValues(
-                                    alpha: 0.8,
-                                  ),
-                                  height: 1.5,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textMain.withValues(alpha: 0.8),
                                 ),
                               ),
-
-                              const SizedBox(height: 40),
+                              const SizedBox(height: 8),
+                              Text(
+                                "We will send a reset link to your registered email.",
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textMuted.withValues(alpha: 0.7),
+                                  height: 1.4,
+                                ),
+                              ),
+                              
+                              const SizedBox(height: 24),
 
                               const MiraTextField(
                                 hintText: "Email Address",
@@ -229,7 +195,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                 keyboardType: TextInputType.emailAddress,
                               ),
 
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 24),
 
                               MiraButton(
                                 text: "Send Reset Link",
@@ -238,44 +204,47 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                                   _showSuccessDialog(context);
                                 },
                               ),
-
-                              const SizedBox(height: 24),
                             ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
+                    ),
 
-          // LAYER 4: FLOATING BACK BUTTON (SOLID & SHARP)
-          Positioned(
-            top: 50,
-            left: 24,
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white, // Solid White agar tidak blur
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
+                    const SizedBox(height: 32),
+
+                    // --- FOOTER (BACK BUTTON) ---
+                    FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: AppColors.textMuted.withValues(alpha: 0.1)),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.arrow_back_rounded,
+                                  size: 18, color: AppColors.textMuted),
+                              SizedBox(width: 8),
+                              Text(
+                                "Back to Login",
+                                style: TextStyle(
+                                  color: AppColors.textMain,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ],
-                ),
-                child: IconButton(
-                  icon: const Icon(
-                    Icons.arrow_back_ios_new_rounded,
-                    size: 20,
-                    color: AppColors.textMain,
-                  ),
-                  onPressed: () => Navigator.pop(context),
                 ),
               ),
             ),
@@ -285,19 +254,73 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     );
   }
 
+  // --- Background Helper (Konsisten) ---
+  Widget _buildAnimatedBackground(Size size) {
+    return Stack(
+      children: [
+        Positioned(
+          top: -80,
+          right: -50,
+          child: ScaleTransition(
+            scale: _bgScaleAnimation,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              child: Container(
+                width: 300,
+                height: 300,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.secondary.withValues(alpha: 0.25),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: size.height * 0.4,
+          left: -80,
+          child: ScaleTransition(
+            scale: _bgScaleAnimation,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+          ),
+        ),
+        BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: Container(color: Colors.transparent),
+        ),
+      ],
+    );
+  }
+
+  // --- Success Dialog (Modern Style) ---
   void _showSuccessDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => Dialog(
         backgroundColor: Colors.transparent,
+        elevation: 0,
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: AppColors.surface.withValues(
-              alpha: 0.95,
-            ), // Hampir solid agar terbaca
+            color: Colors.white,
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.5)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.1),
+                blurRadius: 40,
+                offset: const Offset(0, 20),
+              ),
+            ],
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -309,12 +332,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
-                  Icons.check_rounded,
+                  Icons.mark_email_read_rounded, // Icon Email Terkirim
                   color: Colors.green,
                   size: 40,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               const Text(
                 "Check your email",
                 style: TextStyle(
@@ -325,9 +348,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               ),
               const SizedBox(height: 8),
               const Text(
-                "We have sent a password recover instructions to your email.",
+                "We have sent password recovery instructions to your email.",
                 textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textMuted),
+                style: TextStyle(color: AppColors.textMuted, height: 1.5),
               ),
               const SizedBox(height: 24),
               MiraButton(
@@ -342,51 +365,5 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
         ),
       ),
     );
-  }
-}
-
-// --- BAGIAN INI YANG SEBELUMNYA HILANG ---
-// Pastikan class ini ada di paling bawah file
-class BackgroundOrbPainter extends CustomPainter {
-  final double animationValue;
-  final Color color1;
-  final Color color2;
-
-  BackgroundOrbPainter({
-    required this.animationValue,
-    required this.color1,
-    required this.color2,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 60);
-
-    final offset1 = Offset(
-      size.width * 0.8 + (math.cos(animationValue * 2 * math.pi) * 30),
-      size.height * 0.1 + (math.sin(animationValue * 2 * math.pi) * 30),
-    );
-    paint.color = color1;
-    canvas.drawCircle(offset1, size.width * 0.4, paint);
-
-    final offset2 = Offset(
-      size.width * 0.1 + (math.sin(animationValue * 2 * math.pi) * 20),
-      size.height * 0.5 + (math.cos(animationValue * 2 * math.pi) * 40),
-    );
-    paint.color = color2;
-    canvas.drawCircle(offset2, size.width * 0.35, paint);
-
-    final offset3 = Offset(
-      size.width * 0.8 + (math.cos(animationValue * math.pi) * -20),
-      size.height * 0.85 + (math.sin(animationValue * math.pi) * -20),
-    );
-    paint.color = color1.withValues(alpha: 0.15);
-    canvas.drawCircle(offset3, size.width * 0.5, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant BackgroundOrbPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
   }
 }

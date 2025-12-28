@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../../core/constant/app_colors.dart';
-import '../../../core/widgets/mira_button.dart';
 
 class FlashcardScreen extends StatefulWidget {
   const FlashcardScreen({super.key});

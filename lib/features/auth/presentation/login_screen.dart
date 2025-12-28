@@ -1,9 +1,9 @@
 import 'dart:ui';
-import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:lottie/lottie.dart';
 
-// Sesuaikan import dengan struktur project Anda
+// Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
 import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
@@ -21,168 +21,174 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen>
     with TickerProviderStateMixin {
-  // Controller untuk Background Bergerak
-  late AnimationController _backgroundController;
+  late AnimationController _bgController;
+  late Animation<double> _bgScaleAnimation;
 
-  // Controller untuk Animasi Masuk (Entrance)
-  late AnimationController _entranceController;
-  late Animation<double> _fadeAnimation;
+  // Controller untuk Animasi Form
+  late AnimationController _formController;
   late Animation<Offset> _slideAnimation;
+  late Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Setup Background Animation
-    _backgroundController = AnimationController(
+    // 1. Background Animation
+    _bgController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 6),
     )..repeat(reverse: true);
 
-    // 2. Setup Entrance Animation
-    _entranceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1200),
-    );
+    _bgScaleAnimation = Tween<double>(
+      begin: 1.0,
+      end: 1.15,
+    ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _entranceController, curve: Curves.easeOut),
+    // 2. Form Entrance Animation
+    _formController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
     );
 
     _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _entranceController,
-            curve: Curves.easeOutCubic,
-          ),
+        Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+          CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
         );
 
-    // Jalankan animasi masuk saat halaman dibuka
-    _entranceController.forward();
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _formController, curve: Curves.easeOut));
+
+    _formController.forward();
   }
 
   @override
   void dispose() {
-    _backgroundController.dispose();
-    _entranceController.dispose();
+    _bgController.dispose();
+    _formController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Agar status bar ikon terlihat jelas (gelap)
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
+
+    final size = MediaQuery.of(context).size;
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      // Stack digunakan untuk menumpuk Background, Blur, dan Konten Form
+      backgroundColor: const Color(0xFFF8FAFC),
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // LAYER 1: Living Background (Konsisten dengan halaman lain)
-          AnimatedBuilder(
-            animation: _backgroundController,
-            builder: (context, child) {
-              return CustomPaint(
-                painter: BackgroundOrbPainter(
-                  animationValue: _backgroundController.value,
-                  color1: AppColors.secondary.withValues(alpha: 0.2),
-                  color2: AppColors.primary.withValues(alpha: 0.15),
-                ),
-                size: Size.infinite,
-              );
-            },
-          ),
+          // LAYER 1: Background Mesh
+          _buildAnimatedBackground(size),
 
-          // LAYER 2: Backdrop Blur (Efek Kaca)
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-            child: Container(color: Colors.transparent),
-          ),
-
-          // LAYER 3: Konten Utama
+          // LAYER 2: Main Content
           SafeArea(
             child: Center(
-              child: ConstrainedBox(
-                // Membatasi lebar agar tetap rapi di Tablet/Web (Max 450px)
-                constraints: const BoxConstraints(maxWidth: 450),
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24.0,
-                    vertical: 16.0,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // --- Tombol Back Custom ---
-                      FadeTransition(
+              // Layout tidak bisa discroll manual (NeverScrollable)
+              child: SingleChildScrollView(
+                physics: const NeverScrollableScrollPhysics(),
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // --- HEADER ---
+                    FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Column(
+                        children: [
+                          SizedBox(
+                            height: 100, // Ukuran disesuaikan agar compact
+                            child: Lottie.asset(
+                              'assets/lottie/BookOpening.json',
+                              fit: BoxFit.contain,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          ShaderMask(
+                            shaderCallback: (bounds) => const LinearGradient(
+                              colors: [AppColors.textMain, AppColors.primary],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ).createShader(bounds),
+                            child: const Text(
+                              "Welcome Back!",
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white,
+                                letterSpacing: -0.5,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            "Ready to continue your mastery?",
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textMuted.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // --- GLASS CARD FORM ---
+                    SlideTransition(
+                      position: _slideAnimation,
+                      child: FadeTransition(
                         opacity: _fadeAnimation,
                         child: Container(
+                          width: double.infinity,
+                          constraints: const BoxConstraints(maxWidth: 450),
+                          padding: const EdgeInsets.all(
+                            28,
+                          ), // Padding disesuaikan
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(
-                              Icons.arrow_back_ios_new_rounded,
-                              size: 20,
-                              color: AppColors.textMain,
+                            color: Colors.white.withValues(alpha: 0.6),
+                            borderRadius: BorderRadius.circular(32),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.8),
+                              width: 1.5,
                             ),
-                            onPressed: () => Navigator.pop(context),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primary.withValues(alpha: 0.1),
+                                blurRadius: 40,
+                                offset: const Offset(0, 20),
+                                spreadRadius: -10,
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // --- Header Section (Slide & Fade) ---
-                      SlideTransition(
-                        position: _slideAnimation,
-                        child: FadeTransition(
-                          opacity: _fadeAnimation,
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               const Text(
-                                "Welcome Back!",
+                                "Login",
                                 style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w800,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
                                   color: AppColors.textMain,
-                                  letterSpacing: -0.5,
                                 ),
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                "Let's continue your learning journey.",
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: AppColors.textMuted.withValues(
-                                    alpha: 0.8,
-                                  ),
-                                  height: 1.5,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                              const SizedBox(height: 20),
 
-                      const SizedBox(height: 40),
-
-                      // --- Form Section ---
-                      // Kita bungkus Form dalam animasi terpisah/delay jika mau,
-                      // tapi disini kita gabung agar smooth satu flow.
-                      SlideTransition(
-                        position: _slideAnimation,
-                        child: FadeTransition(
-                          opacity: _fadeAnimation,
-                          child: Column(
-                            children: [
                               const MiraTextField(
                                 hintText: "Email Address",
                                 icon: Icons.email_outlined,
                                 keyboardType: TextInputType.emailAddress,
                               ),
+
+                              const SizedBox(height: 16),
 
                               const MiraTextField(
                                 hintText: "Password",
@@ -190,7 +196,6 @@ class _LoginScreenState extends State<LoginScreen>
                                 isPassword: true,
                               ),
 
-                              // Forgot Password Link
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
@@ -203,30 +208,22 @@ class _LoginScreenState extends State<LoginScreen>
                                       ),
                                     );
                                   },
-                                  style: TextButton.styleFrom(
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: const Size(0, 0),
-                                    tapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
                                   child: const Text(
                                     "Forgot Password?",
                                     style: TextStyle(
                                       color: AppColors.primary,
                                       fontWeight: FontWeight.w600,
-                                      fontSize: 14,
+                                      fontSize: 13,
                                     ),
                                   ),
                                 ),
                               ),
 
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 20),
 
-                              // Login Button
                               MiraButton(
-                                text: "Login",
+                                text: "Log In",
                                 onPressed: () {
-                                  // Navigasi ke Dashboard
                                   Navigator.pushAndRemoveUntil(
                                     context,
                                     MaterialPageRoute(
@@ -238,76 +235,94 @@ class _LoginScreenState extends State<LoginScreen>
                                 },
                               ),
 
-                              const SizedBox(height: 32),
+                              const SizedBox(height: 24),
 
-                              // Divider "Or continue with" (Opsional - menambah kesan Pro)
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Divider(color: Colors.grey.shade300),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                    ),
-                                    child: Text(
-                                      "or",
-                                      style: TextStyle(
-                                        color: AppColors.textMuted.withValues(
-                                          alpha: 0.5,
-                                        ),
-                                        fontSize: 14,
+                              // --- DIVIDER ---
+                              const _DividerWithText(text: "or"),
+
+                              const SizedBox(height: 20),
+
+                              // --- GOOGLE BUTTON (MODIFIED) ---
+                              SizedBox(
+                                width: double.infinity,
+                                height:
+                                    50, // Tinggi sedikit dikurangi agar muat
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    backgroundColor: Colors.white,
+                                    side: BorderSide(
+                                      color: AppColors.textMuted.withValues(
+                                        alpha: 0.2,
                                       ),
                                     ),
-                                  ),
-                                  Expanded(
-                                    child: Divider(color: Colors.grey.shade300),
-                                  ),
-                                ],
-                              ),
-
-                              const SizedBox(height: 32),
-
-                              // Footer: Register Link
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Text(
-                                    "Don't have an account? ",
-                                    style: TextStyle(
-                                      color: AppColors.textMuted,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(16),
                                     ),
+                                    elevation: 0,
                                   ),
-                                  GestureDetector(
-                                    onTap: () {
-                                      Navigator.pushReplacement(
-                                        context,
-                                        MaterialPageRoute(
-                                          builder: (context) =>
-                                              const RegisterScreen(),
-                                        ),
-                                      );
-                                    },
-                                    child: const Text(
-                                      "Sign Up",
-                                      style: TextStyle(
-                                        color: AppColors.secondary,
-                                        fontWeight: FontWeight.bold,
+                                  onPressed: () {
+                                    // Logika Login Google Disini
+                                  },
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      const Icon(
+                                        Icons.g_mobiledata_rounded,
+                                        size: 30,
+                                        color: Colors.black87,
                                       ),
-                                    ),
+                                      const SizedBox(width: 10),
+                                      const Text(
+                                        "Continue with Google",
+                                        style: TextStyle(
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w600,
+                                          color: AppColors.textMain,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-
-                              const SizedBox(
-                                height: 20,
-                              ), // Bottom padding extra
                             ],
                           ),
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+
+                    const SizedBox(height: 24),
+
+                    // --- FOOTER ---
+                    FadeTransition(
+                      opacity: _fadeAnimation,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Text(
+                            "New to Mira? ",
+                            style: TextStyle(color: AppColors.textMuted),
+                          ),
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const RegisterScreen(),
+                                ),
+                              );
+                            },
+                            child: const Text(
+                              "Create an Account",
+                              style: TextStyle(
+                                color: AppColors.secondary,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -316,50 +331,80 @@ class _LoginScreenState extends State<LoginScreen>
       ),
     );
   }
+
+  Widget _buildAnimatedBackground(Size size) {
+    return Stack(
+      children: [
+        Positioned(
+          top: -80,
+          right: -50,
+          child: ScaleTransition(
+            scale: _bgScaleAnimation,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              child: Container(
+                width: 300,
+                height: 300,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.secondary.withValues(alpha: 0.25),
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: size.height * 0.4,
+          left: -80,
+          child: ScaleTransition(
+            scale: _bgScaleAnimation,
+            child: ImageFiltered(
+              imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+              child: Container(
+                width: 250,
+                height: 250,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppColors.primary.withValues(alpha: 0.2),
+                ),
+              ),
+            ),
+          ),
+        ),
+        BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          child: Container(color: Colors.transparent),
+        ),
+      ],
+    );
+  }
 }
 
-// --- Background Painter (Sama dengan Halaman Lain) ---
-// Agar tidak perlu copy-paste file painter berulang kali jika sudah ada.
-class BackgroundOrbPainter extends CustomPainter {
-  final double animationValue;
-  final Color color1;
-  final Color color2;
-
-  BackgroundOrbPainter({
-    required this.animationValue,
-    required this.color1,
-    required this.color2,
-  });
+class _DividerWithText extends StatelessWidget {
+  final String text;
+  const _DividerWithText({required this.text});
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 60);
-
-    final offset1 = Offset(
-      size.width * 0.8 + (math.cos(animationValue * 2 * math.pi) * 30),
-      size.height * 0.1 + (math.sin(animationValue * 2 * math.pi) * 30),
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Divider(color: AppColors.textMuted.withValues(alpha: 0.2)),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted.withValues(alpha: 0.6),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Divider(color: AppColors.textMuted.withValues(alpha: 0.2)),
+        ),
+      ],
     );
-    paint.color = color1;
-    canvas.drawCircle(offset1, size.width * 0.4, paint);
-
-    final offset2 = Offset(
-      size.width * 0.1 + (math.sin(animationValue * 2 * math.pi) * 20),
-      size.height * 0.5 + (math.cos(animationValue * 2 * math.pi) * 40),
-    );
-    paint.color = color2;
-    canvas.drawCircle(offset2, size.width * 0.35, paint);
-
-    final offset3 = Offset(
-      size.width * 0.8 + (math.cos(animationValue * math.pi) * -20),
-      size.height * 0.85 + (math.sin(animationValue * math.pi) * -20),
-    );
-    paint.color = color1.withValues(alpha: 0.15);
-    canvas.drawCircle(offset3, size.width * 0.5, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant BackgroundOrbPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue;
   }
 }

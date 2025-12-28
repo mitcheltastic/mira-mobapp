@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../../core/constant/app_colors.dart';
+import '../../../core/constant/app_colors.dart';
 
 class NoteCard extends StatelessWidget {
   final String title;
