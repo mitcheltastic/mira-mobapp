@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 import 'onboarding_screen.dart';
 
@@ -43,12 +44,34 @@ class _SplashScreenState extends State<SplashScreen>
     });
   }
 
-  void _navigateToNextScreen() {
+  Future<void> _navigateToNextScreen() async {
+    // 1. Cek apakah ada sesi login yang aktif di Supabase
+    final session = Supabase.instance.client.auth.currentSession;
+
+    if (!mounted) return;
+
+    // 2. Tentukan mau ke mana
+    // Jika session != null (artinya sudah login) -> Ke Dashboard
+    // Jika session == null (belum login) -> Ke Onboarding
+
+    // NOTE: Ganti 'DashboardScreen()' dengan widget halaman utamamu nanti
+    // Widget nextScreen = session != null ? const DashboardScreen() : const OnboardingScreen();
+
+    // SEMENTARA (Kalau belum punya Dashboard, logika if-nya disiapkan dulu):
+    Widget nextScreen;
+    if (session != null) {
+      // print("User sudah login, arahkan ke Dashboard");
+      // nextScreen = const DashboardScreen(); // Buka komen ini jika sudah ada file dashboard
+      nextScreen =
+          const OnboardingScreen(); // HAPUS baris ini nanti jika dashboard sudah jadi
+    } else {
+      nextScreen = const OnboardingScreen();
+    }
+
     Navigator.pushReplacement(
       context,
       PageRouteBuilder(
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const OnboardingScreen(),
+        pageBuilder: (context, animation, secondaryAnimation) => nextScreen,
         transitionDuration: const Duration(milliseconds: 1000),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
@@ -97,7 +120,7 @@ class _SplashScreenState extends State<SplashScreen>
                   if (composition != null) {
                     return child;
                   } else {
-                    return const SizedBox(); 
+                    return const SizedBox();
                   }
                 },
                 errorBuilder: (context, error, stackTrace) {
