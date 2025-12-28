@@ -6,6 +6,7 @@ import 'package:lottie/lottie.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../data/auth_repository.dart';
+import 'package:local_auth/local_auth.dart';
 
 // Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
@@ -221,6 +222,69 @@ class _LoginScreenState extends State<LoginScreen>
   }
   // --- END OF NEW FUNCTION ---
 
+  final LocalAuthentication auth = LocalAuthentication();
+
+  Future<void> _authenticateWithBiometrics() async {
+    // 1. Check if the device supports biometrics
+    final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
+    final bool canAuthenticate =
+        canAuthenticateWithBiometrics || await auth.isDeviceSupported();
+
+    if (!canAuthenticate) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Biometrics not available on this device'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 2. Check if the user is actually logged in (Supabase session exists)
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Please log in with Email or Google first to enable biometrics.',
+            ),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+      return;
+    }
+
+    // 3. Trigger the Fingerprint Prompt
+    try {
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: 'Please authenticate to access your account',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        // 4. Success! Navigate to Home
+        if (mounted) {
+          Navigator.pushReplacementNamed(
+            context,
+            '/home',
+          ); // Check your route name!
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -375,9 +439,45 @@ class _LoginScreenState extends State<LoginScreen>
                               const SizedBox(height: 20),
 
                               // 7. CONNECT BUTTON LOGIC
-                              MiraButton(
-                                text: _isLoading ? "Logging In..." : "Log In",
-                                onPressed: _isLoading ? null : _handleLogin,
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  // Your existing Login Button logic...
+                                  Expanded(
+                                    child: MiraButton(
+                                      text: _isLoading
+                                          ? "Logging In..."
+                                          : "Log In",
+                                      onPressed: _isLoading
+                                          ? null
+                                          : _handleLogin,
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 16),
+
+                                  // --- NEW BIOMETRIC BUTTON ---
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: AppColors.primary.withValues(
+                                          alpha: 0.2,
+                                        ), // <--- This fixes it
+                                      ),
+                                    ),
+                                    child: IconButton(
+                                      icon: const Icon(
+                                        Icons.fingerprint,
+                                        size: 28,
+                                        color: AppColors.primary,
+                                      ),
+                                      onPressed: _authenticateWithBiometrics,
+                                      tooltip: "Login with Fingerprint",
+                                    ),
+                                  ),
+                                ],
                               ),
 
                               const SizedBox(height: 24),
