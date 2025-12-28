@@ -2,6 +2,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
+// 1. Import Repository & Supabase (if needed for specific exceptions)
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../data/auth_repository.dart';
 
 // Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
@@ -23,6 +26,13 @@ class _LoginScreenState extends State<LoginScreen>
     with TickerProviderStateMixin {
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
+
+  // 2. ADD TEXT CONTROLLERS
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  // 3. ADD LOADING STATE
+  bool _isLoading = false;
 
   // Controller untuk Animasi Form
   late AnimationController _formController;
@@ -65,9 +75,79 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
+    // 4. DISPOSE TEXT CONTROLLERS
+    _emailController.dispose();
+    _passwordController.dispose();
+
     _bgController.dispose();
     _formController.dispose();
     super.dispose();
+  }
+
+  // 5. LOGIN LOGIC
+  Future<void> _handleLogin() async {
+    // Basic Validation
+    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please fill in all fields")),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      final authRepo = AuthRepository();
+
+      // Call Supabase Login
+      await authRepo.signIn(
+        email: _emailController.text.trim(),
+        password: _passwordController.text.trim(),
+      );
+
+      if (mounted) {
+        // Success Feedback
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Welcome back!"),
+            backgroundColor: AppColors.success,
+          ),
+        );
+
+        // Navigate to Dashboard
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+          (route) => false,
+        );
+      }
+    } on AuthException catch (e) {
+      // Specific Supabase Error (e.g., Wrong password)
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e.message,
+            ), // Shows "Invalid login credentials" nicely
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      // General Error
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error: ${e.toString()}"),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   @override
@@ -92,7 +172,6 @@ class _LoginScreenState extends State<LoginScreen>
           // LAYER 2: Main Content
           SafeArea(
             child: Center(
-              // Layout tidak bisa discroll manual (NeverScrollable)
               child: SingleChildScrollView(
                 physics: const NeverScrollableScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -105,7 +184,7 @@ class _LoginScreenState extends State<LoginScreen>
                       child: Column(
                         children: [
                           SizedBox(
-                            height: 100, // Ukuran disesuaikan agar compact
+                            height: 100,
                             child: Lottie.asset(
                               'assets/lottie/BookOpening.json',
                               fit: BoxFit.contain,
@@ -120,6 +199,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ).createShader(bounds),
                             child: const Text(
                               "Welcome Back!",
+                              textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 26,
                                 fontWeight: FontWeight.w900,
@@ -131,6 +211,7 @@ class _LoginScreenState extends State<LoginScreen>
                           const SizedBox(height: 8),
                           Text(
                             "Ready to continue your mastery?",
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
                               color: AppColors.textMuted.withValues(alpha: 0.8),
@@ -150,9 +231,7 @@ class _LoginScreenState extends State<LoginScreen>
                         child: Container(
                           width: double.infinity,
                           constraints: const BoxConstraints(maxWidth: 450),
-                          padding: const EdgeInsets.all(
-                            28,
-                          ), // Padding disesuaikan
+                          padding: const EdgeInsets.all(28),
                           decoration: BoxDecoration(
                             color: Colors.white.withValues(alpha: 0.6),
                             borderRadius: BorderRadius.circular(32),
@@ -182,7 +261,9 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
                               const SizedBox(height: 20),
 
-                              const MiraTextField(
+                              // 6. CONNECT CONTROLLERS
+                              MiraTextField(
+                                controller: _emailController,
                                 hintText: "Email Address",
                                 icon: Icons.email_outlined,
                                 keyboardType: TextInputType.emailAddress,
@@ -190,7 +271,8 @@ class _LoginScreenState extends State<LoginScreen>
 
                               const SizedBox(height: 16),
 
-                              const MiraTextField(
+                              MiraTextField(
+                                controller: _passwordController,
                                 hintText: "Password",
                                 icon: Icons.lock_outline,
                                 isPassword: true,
@@ -221,32 +303,22 @@ class _LoginScreenState extends State<LoginScreen>
 
                               const SizedBox(height: 20),
 
+                              // 7. CONNECT BUTTON LOGIC
                               MiraButton(
-                                text: "Log In",
-                                onPressed: () {
-                                  Navigator.pushAndRemoveUntil(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (context) =>
-                                          const MainNavigationScreen(),
-                                    ),
-                                    (route) => false,
-                                  );
-                                },
+                                text: _isLoading ? "Logging In..." : "Log In",
+                                onPressed: _isLoading ? null : _handleLogin,
                               ),
 
                               const SizedBox(height: 24),
 
-                              // --- DIVIDER ---
                               const _DividerWithText(text: "or"),
 
                               const SizedBox(height: 20),
 
-                              // --- GOOGLE BUTTON (MODIFIED) ---
+                              // --- GOOGLE BUTTON (Still UI Only) ---
                               SizedBox(
                                 width: double.infinity,
-                                height:
-                                    50, // Tinggi sedikit dikurangi agar muat
+                                height: 50,
                                 child: OutlinedButton(
                                   style: OutlinedButton.styleFrom(
                                     backgroundColor: Colors.white,

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Import Supabase
 import '../../../core/constant/app_colors.dart';
 
 // Import widget yang sudah ada
@@ -20,18 +21,51 @@ class _HomeScreenState extends State<HomeScreen> {
   // 1. Controller untuk menangani input teks
   final TextEditingController _searchController = TextEditingController();
 
-  // State untuk mengecek apakah sedang ada teks atau tidak (untuk UI tombol clear)
+  // State untuk mengecek apakah sedang ada teks atau tidak
   bool _isSearching = false;
+
+  // 2. Variable untuk menampung nama user (Default sementara)
+  String _userName = "Friend";
 
   @override
   void initState() {
     super.initState();
-    // Listener untuk mendeteksi perubahan teks secara real-time
+
+    // Panggil fungsi ambil data user
+    _getUserProfile();
+
+    // Listener search
     _searchController.addListener(() {
       setState(() {
         _isSearching = _searchController.text.isNotEmpty;
       });
     });
+  }
+
+  // 3. Fungsi mengambil data nama dari Supabase
+  Future<void> _getUserProfile() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        // Query ke tabel 'profiles' ambil kolom 'full_name'
+        final data = await Supabase.instance.client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+
+        if (mounted) {
+          setState(() {
+            // Ambil nama depan saja biar rapi (opsional)
+            String fullName = data['full_name'] ?? "Friend";
+            _userName = fullName.split(' ')[0]; // Ambil kata pertama
+          });
+        }
+      }
+    } catch (e) {
+      // Jika error (misal koneksi jelek), biarkan default "Friend"
+      debugPrint("Error fetching profile: $e");
+    }
   }
 
   @override
@@ -43,9 +77,6 @@ class _HomeScreenState extends State<HomeScreen> {
   // Fungsi simulasi pencarian
   void _handleSearch(String query) {
     if (query.isEmpty) return;
-
-    // Di sini nanti logika filter data/pindah halaman search
-    // Untuk sekarang kita beri feedback visual bahwa search "berjalan"
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text("Searching for '$query'..."),
@@ -53,19 +84,16 @@ class _HomeScreenState extends State<HomeScreen> {
         duration: const Duration(seconds: 1),
       ),
     );
-
-    // Tutup keyboard setelah enter
     FocusScope.of(context).unfocus();
   }
 
   void _clearSearch() {
     _searchController.clear();
-    FocusScope.of(context).unfocus(); // Tutup keyboard
+    FocusScope.of(context).unfocus();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Mengatur status bar transparan
     SystemChrome.setSystemUIOverlayStyle(
       const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
@@ -79,26 +107,21 @@ class _HomeScreenState extends State<HomeScreen> {
         bottom: false,
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(
-            24,
-            20,
-            24,
-            120,
-          ), // Bottom padding untuk Navbar
+          padding: const EdgeInsets.fromLTRB(24, 20, 24, 120),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. REUSE HEADER (Sesuai permintaan: tidak bertumpuk)
-              const DashboardHeader(userName: "Hilmy"),
+              // 4. Update Header dengan variabel _userName
+              DashboardHeader(userName: _userName), // Tidak const lagi
 
               const SizedBox(height: 24),
 
-              // 2. FUNCTIONAL SEARCH BAR
+              // FUNCTIONAL SEARCH BAR
               _buildFunctionalSearchBar(),
 
               const SizedBox(height: 32),
 
-              // 3. Focus Mode Section
+              // Focus Mode Section
               _buildSectionTitle(
                 title: "Focus Mode",
                 subtitle: "Let's get productive",
@@ -108,7 +131,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
               const SizedBox(height: 32),
 
-              // 4. Study Tools Section (Menu Utama)
+              // Study Tools Section
               _buildSectionTitle(
                 title: "Study Tools",
                 subtitle: "Essentials for you",
@@ -124,7 +147,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  // --- WIDGET BUILDER ---
+  // --- WIDGET BUILDER (Sama seperti sebelumnya) ---
 
   Widget _buildFunctionalSearchBar() {
     return Container(
@@ -140,16 +163,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
         border: Border.all(
-          color: _isSearching
-              ? AppColors.primary
-              : Colors.transparent, // Highlight border saat ngetik
+          color: _isSearching ? AppColors.primary : Colors.transparent,
           width: 1.5,
         ),
       ),
       child: TextField(
         controller: _searchController,
-        textInputAction: TextInputAction.search, // Tombol enter jadi 'Search'
-        onSubmitted: _handleSearch, // Eksekusi fungsi saat enter ditekan
+        textInputAction: TextInputAction.search,
+        onSubmitted: _handleSearch,
         style: const TextStyle(
           color: AppColors.textMain,
           fontWeight: FontWeight.w600,
@@ -167,21 +188,17 @@ class _HomeScreenState extends State<HomeScreen> {
             horizontal: 16,
             vertical: 14,
           ),
-
-          // Icon Kiri (Search)
           prefixIcon: const Icon(
             Icons.search_rounded,
             color: AppColors.textMuted,
             size: 22,
           ),
-
-          // Icon Kanan (Logic: Jika ngetik -> Silang, Jika kosong -> Filter)
           suffixIcon: _isSearching
               ? GestureDetector(
                   onTap: _clearSearch,
                   child: const Icon(
                     Icons.close_rounded,
-                    color: AppColors.error, // Warna merah untuk clear
+                    color: AppColors.error,
                     size: 20,
                   ),
                 )
@@ -192,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
-                    Icons.tune_rounded, // Filter icon
+                    Icons.tune_rounded,
                     color: AppColors.primary,
                     size: 18,
                   ),

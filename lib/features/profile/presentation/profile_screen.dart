@@ -1,10 +1,61 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Import Supabase
 import '../../../core/constant/app_colors.dart';
-import '../../onboarding/presentation/welcome_screen.dart'; // Untuk navigasi Logout
+import '../../onboarding/presentation/welcome_screen.dart';
+import '../../auth/data/auth_repository.dart'; // Import Repo for Logout
 import '../widgets/profile_menu_item.dart';
 
-class ProfileScreen extends StatelessWidget {
+// 2. Changed to StatefulWidget
+class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
+
+  @override
+  State<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends State<ProfileScreen> {
+  // Variables to hold user data
+  String _fullName = "Loading...";
+  String _email = "Loading...";
+
+  @override
+  void initState() {
+    super.initState();
+    _getProfileData();
+  }
+
+  // 3. Fetch Data Logic
+  Future<void> _getProfileData() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        // Get Email directly from Auth
+        setState(() {
+          _email = user.email ?? "No Email";
+        });
+
+        // Get Name from 'profiles' table
+        final data = await Supabase.instance.client
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .single();
+
+        if (mounted) {
+          setState(() {
+            _fullName = data['full_name'] ?? "User";
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading profile: $e");
+      if (mounted) {
+        setState(() {
+          _fullName = "Error loading name";
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -16,7 +67,7 @@ class ProfileScreen extends StatelessWidget {
           child: Column(
             children: [
               const SizedBox(height: 16),
-              
+
               // 1. Profile Picture & Badge
               Center(
                 child: Stack(
@@ -30,7 +81,9 @@ class ProfileScreen extends StatelessWidget {
                       child: const CircleAvatar(
                         radius: 50,
                         backgroundColor: Colors.grey,
-                        backgroundImage: NetworkImage('https://i.pravatar.cc/300'), // Gambar Dummy
+                        backgroundImage: NetworkImage(
+                          'https://i.pravatar.cc/300',
+                        ), // Gambar Dummy
                       ),
                     ),
                     // Premium Badge
@@ -38,7 +91,10 @@ class ProfileScreen extends StatelessWidget {
                       bottom: 0,
                       right: 0,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.secondary, // Coral Color
                           borderRadius: BorderRadius.circular(20),
@@ -58,18 +114,25 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              
-              // 2. Name & Email
-              const Text(
-                "Hilmy Baihaqi",
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.textMain),
+
+              // 4. Dynamic Name & Email
+              Text(
+                _fullName, // Now uses the variable
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMain,
+                ),
               ),
               const SizedBox(height: 4),
-              const Text(
-                "hilmy@telkomuniversity.ac.id",
-                style: TextStyle(fontSize: 14, color: AppColors.textMuted),
+              Text(
+                _email, // Now uses the variable
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textMuted,
+                ),
               ),
-              
+
               const SizedBox(height: 32),
 
               // 3. Mini Stats Row
@@ -108,14 +171,13 @@ class ProfileScreen extends StatelessWidget {
                 icon: Icons.help_outline,
                 onTap: () {},
               ),
-              
-              // 5. Logout Button
+
+              // 5. Logout Button (Updated Logic)
               ProfileMenuItem(
                 title: "Log Out",
                 icon: Icons.logout,
                 isDestructive: true,
                 onTap: () {
-                  // Tampilkan Dialog Konfirmasi
                   showDialog(
                     context: context,
                     builder: (context) => AlertDialog(
@@ -127,15 +189,25 @@ class ProfileScreen extends StatelessWidget {
                           child: const Text("Cancel"),
                         ),
                         TextButton(
-                          onPressed: () {
-                            // Logic Logout: Kembali ke Welcome Screen & Hapus semua route belakangnya
-                            Navigator.pushAndRemoveUntil(
-                              context,
-                              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                              (route) => false,
-                            );
+                          onPressed: () async {
+                            // 1. Call SignOut
+                            await AuthRepository().signOut();
+
+                            if (context.mounted) {
+                              // 2. Navigate back to Welcome
+                              Navigator.pushAndRemoveUntil(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => const WelcomeScreen(),
+                                ),
+                                (route) => false,
+                              );
+                            }
                           },
-                          child: const Text("Log Out", style: TextStyle(color: AppColors.error)),
+                          child: const Text(
+                            "Log Out",
+                            style: TextStyle(color: AppColors.error),
+                          ),
                         ),
                       ],
                     ),
@@ -171,7 +243,11 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               value,
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textMain),
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textMain,
+              ),
             ),
             Text(
               label,
