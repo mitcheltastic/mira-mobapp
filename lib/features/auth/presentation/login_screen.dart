@@ -5,9 +5,10 @@ import 'package:lottie/lottie.dart';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import '../data/auth_repository.dart';
 import 'package:local_auth/local_auth.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../data/auth_repository.dart';
 import '../../../core/constant/app_colors.dart';
 import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
@@ -27,23 +28,24 @@ class _LoginScreenState extends State<LoginScreen>
     with TickerProviderStateMixin {
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
+  late AnimationController _formController;
+  late Animation<Offset> _slideAnimation;
+  late Animation<double> _fadeAnimation;
 
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
   bool _isLoading = false;
-
-  late AnimationController _formController;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _fadeAnimation;
-
   final LocalAuthentication auth = LocalAuthentication();
+  final _storage = const FlutterSecureStorage();
 
   @override
   void initState() {
     super.initState();
+    _setupAnimations();
+  }
 
-    // 1. Background Animation
+  void _setupAnimations() {
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 6),
@@ -54,7 +56,6 @@ class _LoginScreenState extends State<LoginScreen>
       end: 1.15,
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
 
-    // 2. Form Entrance Animation
     _formController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 1000),
@@ -106,7 +107,6 @@ class _LoginScreenState extends State<LoginScreen>
   }
 
   Future<void> _handleLogin() async {
-    // 1. Validasi Input Lebih Spesifik
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
 
@@ -114,7 +114,6 @@ class _LoginScreenState extends State<LoginScreen>
       _showSnackBar("Email address is required.");
       return;
     }
-
     if (password.isEmpty) {
       _showSnackBar("Password is required.");
       return;
@@ -124,64 +123,247 @@ class _LoginScreenState extends State<LoginScreen>
 
     try {
       final authRepo = AuthRepository();
-
-      await authRepo.signIn(
-        email: email,
-        password: password,
-      );
+      await authRepo.signIn(email: email, password: password);
+      final String? isThisUserEnabled =
+          await _storage.read(key: 'bio_enabled_$email');
+      final String? isThisUserIgnored =
+          await _storage.read(key: 'bio_ignored_$email');
 
       if (mounted) {
         _showSnackBar("Welcome back!", isError: false);
+        if (isThisUserEnabled == 'true') {
+          await _storage.write(key: 'bio_pass_$email', value: password);
+          await _storage.write(key: 'last_bio_user', value: email);
 
-        // Navigate to Dashboard
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-              builder: (context) => const MainNavigationScreen()),
-          (route) => false,
-        );
+          _navigateToDashboard();
+        } else {
+          if (isThisUserIgnored == 'true') {
+            _navigateToDashboard();
+          } else {
+            await _askToEnableBiometrics(email, password);
+          }
+        }
       }
     } on AuthException catch (e) {
       String errorMessage = e.message;
       if (e.message.toLowerCase().contains("invalid login credentials")) {
         errorMessage = "Incorrect email or password.";
       }
-
       _showSnackBar(errorMessage);
     } catch (e) {
       _showSnackBar("An unexpected error occurred: ${e.toString()}");
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- GOOGLE SIGN IN ---
+  Future<void> _askToEnableBiometrics(String email, String password) async {
+    final bool canCheckBiometrics = await auth.canCheckBiometrics;
+    if (!canCheckBiometrics) {
+      _navigateToDashboard();
+      return;
+    }
+
+    if (!mounted) return;
+    bool doNotAskAgain = false;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            return AlertDialog(
+              title: const Text("Enable Biometric Login?"),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "Would you like to use fingerprint/face ID for $email?",
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                  ),
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: () {
+                      setStateDialog(() {
+                        doNotAskAgain = !doNotAskAgain;
+                      });
+                    },
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Checkbox(
+                            value: doNotAskAgain,
+                            activeColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4)),
+                            onChanged: (val) {
+                              setStateDialog(
+                                  () => doNotAskAgain = val ?? false);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Text(
+                            "Don't ask me again for this account",
+                            style: TextStyle(
+                                fontSize: 12, color: AppColors.textMuted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+
+                    if (doNotAskAgain) {
+                      await _storage.write(
+                          key: 'bio_ignored_$email', value: 'true');
+                    }
+
+                    _navigateToDashboard();
+                  },
+                  child:
+                      const Text("Skip", style: TextStyle(color: Colors.grey)),
+                ),
+
+                TextButton(
+                  onPressed: () async {
+                    Navigator.pop(context);
+
+                    try {
+                      bool didAuthenticate = await auth.authenticate(
+                        localizedReason:
+                            'Authenticate to enable biometric login',
+                        options: const AuthenticationOptions(stickyAuth: true),
+                      );
+
+                      if (didAuthenticate) {
+                        await _storage.write(
+                            key: 'bio_enabled_$email', value: 'true');
+                        await _storage.write(
+                            key: 'bio_pass_$email', value: password);
+                        await _storage.delete(key: 'bio_ignored_$email');
+                        await _storage.write(
+                            key: 'last_bio_user', value: email);
+
+                        if (mounted) {
+                          _showSnackBar("Biometric login enabled!",
+                              isError: false);
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint("Bio setup error: $e");
+                    }
+
+                    _navigateToDashboard();
+                  },
+                  child: const Text("Yes, Enable",
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _authenticateWithBiometrics() async {
+    String? lastUserEmail = await _storage.read(key: 'last_bio_user');
+
+    if (lastUserEmail == null) {
+      _showSnackBar(
+          'No biometric account linked yet. Please login manually first.');
+      return;
+    }
+
+    String? isEnabled =
+        await _storage.read(key: 'bio_enabled_$lastUserEmail');
+
+    if (isEnabled != 'true') {
+      _showSnackBar(
+          'Biometrics disabled for $lastUserEmail. Please login manually.');
+      return;
+    }
+
+    final bool canCheck = await auth.canCheckBiometrics;
+    if (!canCheck) {
+      _showSnackBar('Biometrics not available on this device');
+      return;
+    }
+
+    try {
+      final bool didAuthenticate = await auth.authenticate(
+        localizedReason: 'Login as $lastUserEmail',
+        options: const AuthenticationOptions(
+          biometricOnly: true,
+          stickyAuth: true,
+        ),
+      );
+
+      if (didAuthenticate) {
+        setState(() => _isLoading = true);
+        final savedPassword =
+            await _storage.read(key: 'bio_pass_$lastUserEmail');
+
+        if (savedPassword != null) {
+          final authRepo = AuthRepository();
+          await authRepo.signIn(
+              email: lastUserEmail, password: savedPassword);
+
+          if (mounted) {
+            _showSnackBar("Login Successful via Biometrics!", isError: false);
+            _navigateToDashboard();
+          }
+        } else {
+          _showSnackBar("Credentials missing. Please login manually.");
+        }
+      }
+    } on AuthException catch (e) {
+      _showSnackBar("Login failed: ${e.message}");
+    } catch (e) {
+      _showSnackBar("Biometric Error: $e");
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _navigateToDashboard() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+      (route) => false,
+    );
+  }
+
   Future<void> _googleSignIn() async {
     setState(() => _isLoading = true);
-
     try {
       const webClientId =
           '95756928282-jnmgsvcusb26oql90mugkepbqe0qije3.apps.googleusercontent.com';
 
-      final GoogleSignIn googleSignIn = GoogleSignIn(
-        serverClientId: webClientId,
-      );
+      final GoogleSignIn googleSignIn =
+          GoogleSignIn(serverClientId: webClientId);
 
       final googleUser = await googleSignIn.signIn();
 
-      if (googleUser == null) {
-        return; // User canceled
-      }
+      if (googleUser == null) return;
 
       final googleAuth = await googleUser.authentication;
       final accessToken = googleAuth.accessToken;
       final idToken = googleAuth.idToken;
 
-      if (idToken == null) {
-        throw 'No ID Token found.';
-      }
+      if (idToken == null) throw 'No ID Token found.';
 
       await Supabase.instance.client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
@@ -191,58 +373,14 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (mounted) {
         _showSnackBar("Google Login Successful!", isError: false);
-
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-              builder: (context) => const MainNavigationScreen()),
-          (route) => false,
-        );
+        _navigateToDashboard();
       }
     } catch (error) {
       _showSnackBar("Google Login Failed: $error");
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  // --- BIOMETRIC AUTH ---
-  Future<void> _authenticateWithBiometrics() async {
-    final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
-    final bool canAuthenticate =
-        canAuthenticateWithBiometrics || await auth.isDeviceSupported();
-
-    if (!canAuthenticate) {
-      _showSnackBar('Biometrics not available on this device');
-      return;
-    }
-
-    final session = Supabase.instance.client.auth.currentSession;
-    if (session == null) {
-      _showSnackBar(
-          'Please log in with Email or Google first to enable biometrics.');
-      return;
-    }
-
-    try {
-      final bool didAuthenticate = await auth.authenticate(
-        localizedReason: 'Please authenticate to access your account',
-        options: const AuthenticationOptions(
-          biometricOnly: true,
-          stickyAuth: true,
-        ),
-      );
-
-      if (didAuthenticate && mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
-      }
-    } catch (e) {
-      _showSnackBar('Error: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -271,7 +409,6 @@ class _LoginScreenState extends State<LoginScreen>
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // --- HEADER ---
                     FadeTransition(
                       opacity: _fadeAnimation,
                       child: Column(
@@ -426,7 +563,9 @@ class _LoginScreenState extends State<LoginScreen>
                                         size: 28,
                                         color: AppColors.primary,
                                       ),
-                                      onPressed: _authenticateWithBiometrics,
+                                      onPressed: _isLoading 
+                                          ? null 
+                                          : _authenticateWithBiometrics,
                                       tooltip: "Login with Fingerprint",
                                     ),
                                   ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../widgets/biometric_settings_screen.dart';
 
 import '../../../core/constant/app_colors.dart';
 import '../../onboarding/presentation/welcome_screen.dart';
@@ -77,7 +78,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               content: const Text("Profile updated!"),
               backgroundColor: AppColors.success,
               behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
             ),
           );
         }
@@ -131,14 +134,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: "Personal Info",
                   icon: Icons.person_outline_rounded,
                   color: Colors.blue,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const AccountSettingsScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => const AccountSettingsScreen(),
+                    ),
+                  ),
                 ),
+                _buildMenuItem(
+                  title: "Biometric Settings",
+                  icon: Icons.fingerprint_rounded, // Icon sidik jari
+                  color: Colors.green,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => const BiometricSettingsScreen(),
+                    ),
+                  ),
+                ),
+                _buildDivider(),
                 _buildDivider(),
                 _buildMenuItem(
                   title: "Security & Password",
                   icon: Icons.lock_outline_rounded,
                   color: Colors.purple,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SecuritySettingsScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => const SecuritySettingsScreen(),
+                    ),
+                  ),
                 ),
                 _buildDivider(),
                 _buildMenuItem(
@@ -159,7 +184,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   title: "Help & Support",
                   icon: Icons.headset_mic_outlined,
                   color: Colors.orange,
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HelpSupportScreen())),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (c) => const HelpSupportScreen(),
+                    ),
+                  ),
                 ),
                 _buildDivider(),
                 _buildMenuItem(
@@ -221,7 +251,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 backgroundColor: Colors.grey[100],
                 backgroundImage: _selectedImage != null
                     ? FileImage(_selectedImage!) as ImageProvider
-                    : const NetworkImage('https://ui-avatars.com/api/?name=User&background=random'),
+                    : const NetworkImage(
+                        'https://ui-avatars.com/api/?name=User&background=random',
+                      ),
               ),
             ),
             GestureDetector(
@@ -240,7 +272,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ],
                 ),
-                child: const Icon(Icons.edit_rounded, size: 14, color: Colors.white),
+                child: const Icon(
+                  Icons.edit_rounded,
+                  size: 14,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],
@@ -264,7 +300,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           child: Text(
             _email,
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted, fontWeight: FontWeight.w500),
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       ],
@@ -273,7 +313,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSubscriptionCard() {
     return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const SubscriptionScreen())),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(builder: (c) => const SubscriptionScreen()),
+      ),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
@@ -284,11 +327,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 )
-              : const LinearGradient(colors: [Color(0xFF334155), Color(0xFF1E293B)]),
+              : const LinearGradient(
+                  colors: [Color(0xFF334155), Color(0xFF1E293B)],
+                ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: isPro ? const Color(0xFF10B981).withValues(alpha: 0.3) : Colors.black.withValues(alpha: 0.2),
+              color: isPro
+                  ? const Color(0xFF10B981).withValues(alpha: 0.3)
+                  : Colors.black.withValues(alpha: 0.2),
               blurRadius: 15,
               offset: const Offset(0, 8),
             ),
@@ -302,7 +349,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: Colors.white.withValues(alpha: 0.2),
                 borderRadius: BorderRadius.circular(14),
               ),
-              child: Icon(isPro ? Icons.verified_user_rounded : Icons.diamond_outlined, color: Colors.white, size: 24),
+              child: Icon(
+                isPro ? Icons.verified_user_rounded : Icons.diamond_outlined,
+                color: Colors.white,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 16),
             Expanded(
@@ -311,17 +362,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 children: [
                   Text(
                     isPro ? "Pro Active" : "Upgrade to Pro",
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     isPro ? "Unlimited Access" : "Unlock all features",
-                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8), fontSize: 12),
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.8),
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white70, size: 16),
+            const Icon(
+              Icons.arrow_forward_ios_rounded,
+              color: Colors.white70,
+              size: 16,
+            ),
           ],
         ),
       ),
@@ -401,11 +463,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               if (trailingText != null) ...[
-                Text(trailingText, style: const TextStyle(fontSize: 13, color: Colors.grey)),
+                Text(
+                  trailingText,
+                  style: const TextStyle(fontSize: 13, color: Colors.grey),
+                ),
                 const SizedBox(width: 8),
               ],
               if (showArrow)
-                const Icon(Icons.chevron_right_rounded, color: Color(0xFFCBD5E1), size: 20),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Color(0xFFCBD5E1),
+                  size: 20,
+                ),
             ],
           ),
         ),
@@ -414,7 +483,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildDivider() {
-    return const Divider(height: 1, thickness: 0.5, color: Color(0xFFF1F5F9), indent: 64, endIndent: 20);
+    return const Divider(
+      height: 1,
+      thickness: 0.5,
+      color: Color(0xFFF1F5F9),
+      indent: 64,
+      endIndent: 20,
+    );
   }
 
   void _showLogoutDialog(BuildContext context) {
@@ -435,14 +510,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (context.mounted) {
                 Navigator.pushAndRemoveUntil(
                   context,
-                  MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => const WelcomeScreen(),
+                  ),
                   (route) => false,
                 );
               }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
               elevation: 0,
             ),
             child: const Text("Log Out", style: TextStyle(color: Colors.white)),
