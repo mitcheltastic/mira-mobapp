@@ -43,7 +43,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     _ageController = TextEditingController(text: "20");
     _locationController = TextEditingController(text: "Bandung, Indonesia");
     _institutionController = TextEditingController(text: "Telkom University");
-    
+
     _selectedGender = 'Male';
     _selectedOccupation = 'College Student';
   }
@@ -66,7 +66,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text("Profile updated successfully!"),
-          backgroundColor: Colors.green,
+          backgroundColor: AppColors.success, // Gunakan warna sukses konsisten
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
@@ -80,102 +80,47 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: const Color(0xFFF8FAFC), // Background bersih
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textMain, size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: AppColors.textMain, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
           title: const Text(
             "Personal Info",
-            style: TextStyle(color: AppColors.textMain, fontWeight: FontWeight.bold, fontSize: 18),
+            style: TextStyle(
+                color: AppColors.textMain,
+                fontWeight: FontWeight.w800,
+                fontSize: 18),
           ),
         ),
+        // Bottom Bar untuk Tombol Save (Agar selalu terlihat)
+        bottomNavigationBar: _buildBottomBar(),
+        
         body: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           physics: const BouncingScrollPhysics(),
           child: Column(
             children: [
               // --- 1. IDENTITY HEADER ---
-              Column(
-                children: [
-                  Stack(
-                    alignment: Alignment.bottomRight,
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 4),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 15,
-                              offset: const Offset(0, 5),
-                            ),
-                          ],
-                        ),
-                        child: const CircleAvatar(
-                          radius: 45,
-                          backgroundImage: NetworkImage('https://i.pravatar.cc/300'),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: const BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(Icons.camera_alt, size: 14, color: Colors.white),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Menampilkan Nickname di Header
-                  Text(
-                    _nicknameController.text,
-                    style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textMain,
-                    ),
-                  ),
-                  Text(
-                    _emailController.text,
-                    style: const TextStyle(fontSize: 14, color: AppColors.textMuted),
-                  ),
-                  const SizedBox(height: 8),
-                  // Badge Status
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _isPro ? const Color(0xFFDCFCE7) : const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: _isPro ? const Color(0xFF16A34A) : Colors.grey),
-                    ),
-                    child: Text(
-                      _isPro ? "Pro Active" : "Free Plan",
-                      style: TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.bold,
-                        color: _isPro ? const Color(0xFF15803D) : Colors.grey[700],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+              _buildProfileHeader(),
 
               const SizedBox(height: 30),
 
               // --- 2. FORM SECTION ---
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 15,
+                      blurRadius: 20,
                       offset: const Offset(0, 5),
                     ),
                   ],
@@ -183,39 +128,45 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 child: Column(
                   children: [
                     // NICKNAME
-                    _buildTextField("Nickname", _nicknameController, Icons.person_outline),
-                    const SizedBox(height: 20),
-                    
-                    // EMAIL (READ ONLY)
-                    _buildTextField(
-                      "Email Address", 
-                      _emailController, 
-                      Icons.email_outlined, 
-                      isReadOnly: true // KUNCI DISINI
+                    _BuildTextField(
+                      label: "Nickname",
+                      controller: _nicknameController,
+                      icon: Icons.person_outline_rounded,
                     ),
                     const SizedBox(height: 20),
-                    
+
+                    // EMAIL (READ ONLY)
+                    _BuildTextField(
+                      label: "Email Address",
+                      controller: _emailController,
+                      icon: Icons.email_outlined,
+                      isReadOnly: true,
+                    ),
+                    const SizedBox(height: 20),
+
                     // UMUR & GENDER (Row)
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          flex: 1,
-                          child: _buildTextField(
-                            "Age", 
-                            _ageController, 
-                            Icons.calendar_today_outlined, 
-                            keyboardType: TextInputType.number
+                          flex: 3, // Proporsi lebar lebih baik
+                          child: _BuildTextField(
+                            label: "Age",
+                            controller: _ageController,
+                            icon: Icons.calendar_today_outlined,
+                            keyboardType: TextInputType.number,
                           ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(
-                          flex: 2,
-                          child: _buildDropdown(
-                            "Gender", 
-                            _selectedGender, 
-                            Icons.wc_outlined, 
-                            _genders,
-                            (val) => setState(() => _selectedGender = val)
+                          flex: 4,
+                          child: _BuildDropdown(
+                            label: "Gender",
+                            value: _selectedGender,
+                            icon: Icons.wc_outlined,
+                            items: _genders,
+                            onChanged: (val) =>
+                                setState(() => _selectedGender = val),
                           ),
                         ),
                       ],
@@ -223,76 +174,217 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                     const SizedBox(height: 20),
 
                     // LOCATION
-                    _buildTextField("Location", _locationController, Icons.location_on_outlined),
+                    _BuildTextField(
+                      label: "Location",
+                      controller: _locationController,
+                      icon: Icons.location_on_outlined,
+                    ),
                     const SizedBox(height: 20),
 
                     // OCCUPATION (Dropdown)
-                    _buildDropdown(
-                      "Occupation", 
-                      _selectedOccupation, 
-                      Icons.work_outline_rounded, 
-                      _occupations,
-                      (val) => setState(() => _selectedOccupation = val)
+                    _BuildDropdown(
+                      label: "Occupation",
+                      value: _selectedOccupation,
+                      icon: Icons.work_outline_rounded,
+                      items: _occupations,
+                      onChanged: (val) =>
+                          setState(() => _selectedOccupation = val),
                     ),
                     const SizedBox(height: 20),
 
                     // INSTITUTION NAME
-                    _buildTextField("Institution Name", _institutionController, Icons.school_outlined),
+                    _BuildTextField(
+                      label: "Institution Name",
+                      controller: _institutionController,
+                      icon: Icons.school_outlined,
+                    ),
                   ],
                 ),
               ),
+              // Tambahan padding bawah agar tidak tertutup keyboard/bottom bar
+              const SizedBox(height: 40),
             ],
-          ),
-        ),
-        
-        // --- BUTTON SAVE ---
-        bottomNavigationBar: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _saveProfile,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: _isLoading 
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text("Save Changes", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
           ),
         ),
       ),
     );
   }
 
-  // --- WIDGET HELPER TEXTFIELD ---
-  Widget _buildTextField(
-    String label, 
-    TextEditingController controller, 
-    IconData icon, 
-    {
-      TextInputType keyboardType = TextInputType.text,
-      bool isReadOnly = false,
-    }
-  ) {
+  // --- WIDGET BUILDERS ---
+
+  Widget _buildProfileHeader() {
+    return Column(
+      children: [
+        Stack(
+          alignment: Alignment.bottomRight,
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 4),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.15),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: const CircleAvatar(
+                radius: 50,
+                backgroundColor: Color(0xFFF1F5F9),
+                backgroundImage: NetworkImage('https://i.pravatar.cc/300'),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: AppColors.primary,
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white, width: 3),
+              ),
+              child: const Icon(Icons.camera_alt_rounded,
+                  size: 16, color: Colors.white),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Text(
+          _nicknameController.text,
+          style: const TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            color: AppColors.textMain,
+            letterSpacing: -0.5,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _emailController.text,
+          style: TextStyle(
+            fontSize: 13,
+            color: AppColors.textMuted.withValues(alpha: 0.8),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 12),
+        // Badge Status Modern
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: _isPro
+                ? const Color(0xFFDCFCE7)
+                : const Color(0xFFF1F5F9),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: _isPro
+                  ? const Color(0xFF16A34A).withValues(alpha: 0.2)
+                  : Colors.grey.withValues(alpha: 0.2),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                _isPro ? Icons.verified_rounded : Icons.person_outline,
+                size: 14,
+                color: _isPro ? const Color(0xFF15803D) : Colors.grey[700],
+              ),
+              const SizedBox(width: 6),
+              Text(
+                _isPro ? "Pro Active" : "Free Plan",
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: _isPro ? const Color(0xFF15803D) : Colors.grey[700],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _saveProfile,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 0, // Flat design
+              shadowColor: AppColors.primary.withValues(alpha: 0.4),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  )
+                : const Text(
+                    "Save Changes",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// --- WIDGET HELPER TEXTFIELD (Optimized) ---
+class _BuildTextField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final IconData icon;
+  final TextInputType keyboardType;
+  final bool isReadOnly;
+
+  const _BuildTextField({
+    required this.label,
+    required this.controller,
+    required this.icon,
+    this.keyboardType = TextInputType.text,
+    this.isReadOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMain),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMain,
+          ),
         ),
         const SizedBox(height: 8),
         TextField(
@@ -300,63 +392,104 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           keyboardType: keyboardType,
           readOnly: isReadOnly,
           style: TextStyle(
-            color: isReadOnly ? Colors.grey[600] : AppColors.textMain, 
-            fontWeight: FontWeight.w500
+            color: isReadOnly ? Colors.grey[600] : AppColors.textMain,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
           ),
           decoration: InputDecoration(
             filled: true,
-            fillColor: isReadOnly ? const Color(0xFFF1F5F9) : Colors.white,
-            prefixIcon: Icon(icon, color: isReadOnly ? Colors.grey : const Color(0xFF94A3B8)),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            fillColor: isReadOnly
+                ? const Color(0xFFF8FAFC) // Warna background read-only
+                : const Color(0xFFFFFFFF), // Putih bersih
+            prefixIcon: Icon(
+              icon,
+              color: isReadOnly ? Colors.grey : const Color(0xFF94A3B8),
+              size: 22,
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             // Border Logic
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: BorderSide(color: const Color(0xFFE2E8F0)), // Standard border grey
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: const Color(0xFFE2E8F0), // Border abu muda
+                width: 1,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
+            ),
+            // Hilangkan border read-only agar terlihat clean
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
             ),
           ),
         ),
       ],
     );
   }
+}
 
-  // --- WIDGET HELPER DROPDOWN ---
-  Widget _buildDropdown(
-    String label,
-    String? value,
-    IconData icon,
-    List<String> items,
-    Function(String?) onChanged,
-  ) {
+// --- WIDGET HELPER DROPDOWN (Optimized) ---
+class _BuildDropdown extends StatelessWidget {
+  final String label;
+  final String? value;
+  final IconData icon;
+  final List<String> items;
+  final Function(String?) onChanged;
+
+  const _BuildDropdown({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.items,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMain),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMain,
+          ),
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: value,
-          icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF94A3B8)),
-          style: const TextStyle(color: AppColors.textMain, fontWeight: FontWeight.w500, fontSize: 16),
+          icon: const Icon(Icons.keyboard_arrow_down_rounded,
+              color: Color(0xFF94A3B8)),
+          style: const TextStyle(
+            color: AppColors.textMain,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.white,
-            prefixIcon: Icon(icon, color: const Color(0xFF94A3B8)),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 22),
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
             ),
           ),
           items: items.map((String item) {
@@ -366,6 +499,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
             );
           }).toList(),
           onChanged: onChanged,
+          dropdownColor: Colors.white,
+          borderRadius: BorderRadius.circular(16),
         ),
       ],
     );

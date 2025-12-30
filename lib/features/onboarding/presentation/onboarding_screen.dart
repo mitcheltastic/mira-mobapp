@@ -105,34 +105,37 @@ class _OnboardingScreenState extends State<OnboardingScreen>
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
 
-    // Hitung tinggi layar untuk proporsi
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
+          // 1. Background Animation (OPTIMIZED: Wrapped in RepaintBoundary)
           Positioned.fill(
-            child: AnimatedBuilder(
-              animation: _backgroundController,
-              builder: (context, child) {
-                return CustomPaint(
-                  painter: BackgroundOrbPainter(
-                    animationValue: _backgroundController.value,
-                    // Opacity rendah agar tidak mengganggu mata
-                    color1: AppColors.secondary.withValues(alpha: 0.1),
-                    color2: AppColors.primary.withValues(alpha: 0.08),
-                  ),
-                  size: Size.infinite,
-                );
-              },
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _backgroundController,
+                builder: (context, child) {
+                  return CustomPaint(
+                    painter: BackgroundOrbPainter(
+                      animationValue: _backgroundController.value,
+                      color1: AppColors.secondary.withValues(alpha: 0.1),
+                      color2: AppColors.primary.withValues(alpha: 0.08),
+                    ),
+                    size: Size.infinite,
+                  );
+                },
+              ),
             ),
           ),
 
+          // 2. Full Screen Blur (OPTIMIZED: Reduced sigma for performance)
+          // Mengurangi sigma dari 30 ke 15 mengurangi beban GPU signifikan
           Positioned.fill(
             child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-              child: Container(color: Colors.transparent),
+              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+              child: const SizedBox.expand(),
             ),
           ),
 
@@ -159,18 +162,22 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                 child: Padding(
                                   padding: const EdgeInsets.all(32.0),
                                   child: Center(
-                                    child: Lottie.asset(
-                                      _contents[index]['lottie']!,
-                                      width: screenHeight * 0.35,
-                                      fit: BoxFit.contain,
-                                      errorBuilder:
-                                          (context, error, stackTrace) {
-                                            return const Icon(
-                                              Icons.image_not_supported,
-                                              size: 100,
-                                              color: Colors.grey,
-                                            );
-                                          },
+                                    // OPTIMIZED: RepaintBoundary & FrameRate
+                                    child: RepaintBoundary(
+                                      child: Lottie.asset(
+                                        _contents[index]['lottie']!,
+                                        width: screenHeight * 0.35,
+                                        fit: BoxFit.contain,
+                                        frameRate: FrameRate.max, 
+                                        errorBuilder:
+                                            (context, error, stackTrace) {
+                                          return const Icon(
+                                            Icons.image_not_supported,
+                                            size: 100,
+                                            color: Colors.grey,
+                                          );
+                                        },
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -181,6 +188,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                       ),
                     ),
 
+                    // Bottom Cloud Container
                     SizedBox(
                       child: Stack(
                         alignment: Alignment.bottomCenter,
@@ -190,13 +198,16 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             left: 0,
                             right: 0,
                             bottom: 0,
-                            child: CustomPaint(painter: CloudShadowPainter()),
+                            // OPTIMIZED: RepaintBoundary for static shadow
+                            child: RepaintBoundary(
+                              child: CustomPaint(painter: CloudShadowPainter()),
+                            ),
                           ),
                           ClipPath(
                             clipper: OrganicCloudClipper(),
                             child: BackdropFilter(
-                              // Blur kaca
-                              filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                              // OPTIMIZED: Reduced blur sigma
+                              filter: ImageFilter.blur(sigmaX: 5, sigmaY: 5),
                               child: Container(
                                 width: double.infinity,
                                 color: AppColors.surface.withValues(
@@ -217,7 +228,7 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                             child: Column(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // 1. Page Indicator
+                                // Page Indicator
                                 Row(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   children: List.generate(
@@ -248,9 +259,9 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                   duration: const Duration(milliseconds: 400),
                                   transitionBuilder: (child, animation) =>
                                       FadeTransition(
-                                        opacity: animation,
-                                        child: child,
-                                      ),
+                                    opacity: animation,
+                                    child: child,
+                                  ),
                                   child: Column(
                                     key: ValueKey<int>(_currentIndex),
                                     children: [
@@ -289,22 +300,22 @@ class _OnboardingScreenState extends State<OnboardingScreen>
                                           ? _finishOnboarding
                                           : _goToPrevious,
                                       style: OutlinedButton.styleFrom(
-                                        // Memberikan warna border yang halus agar tidak terlalu mencolok
                                         side: BorderSide(
-                                          color: const Color.fromARGB(0, 255, 255, 255).withValues(
+                                          color: const Color.fromARGB(
+                                                  0, 255, 255, 255)
+                                              .withValues(
                                             alpha: 0.3,
                                           ),
                                           width: 1.5,
                                         ),
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal:
-                                              32, // Sedikit lebih ramping dari tombol Next
+                                          horizontal: 32,
                                           vertical: 16,
                                         ),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
                                             20,
-                                          ), // Radius sama dengan Next
+                                          ),
                                         ),
                                       ),
                                       child: Text(
@@ -386,7 +397,6 @@ class OrganicCloudClipper extends CustomClipper<Path> {
     path.quadraticBezierTo(w * 0.65, waveH - 35, w * 0.8, waveH - 10);
     path.quadraticBezierTo(w * 0.9, waveH - 25, w, waveH);
 
-    // Tutup path
     path.lineTo(w, h);
     path.lineTo(0, h);
     path.close();
@@ -426,8 +436,10 @@ class BackgroundOrbPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // OPTIMIZED: Reduced Blur Mask Filter
+    // Blur 60 sangat berat, 40 masih memberikan efek serupa tapi lebih ringan
     final paint = Paint()
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 60);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 40);
 
     final offset1 = Offset(
       size.width * 0.8 + (math.cos(animationValue * 2 * math.pi) * 30),

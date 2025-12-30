@@ -2,6 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
+
 // 1. Add Imports
 import '../data/auth_repository.dart';
 
@@ -54,8 +55,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
 
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
-          CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
-        );
+      CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
+    );
 
     _fadeAnimation = Tween<double>(
       begin: 0.0,
@@ -74,12 +75,35 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
     super.dispose();
   }
 
+  // --- HELPER UNTUK SNACKBAR (Efisien) ---
+  void _showSnackBar(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   // 4. LOGIC TO HANDLE RESET
   Future<void> _handleReset() async {
-    if (_emailController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please enter your email address")),
-      );
+    // Validasi input kosong (Efisien)
+    if (_emailController.text.trim().isEmpty) {
+      _showSnackBar("Please enter your email address.");
       return;
     }
 
@@ -97,12 +121,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error: ${e.toString()}"),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        _showSnackBar("Error: ${e.toString().replaceAll("Exception: ", "")}");
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
@@ -125,11 +144,15 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          _buildAnimatedBackground(size),
+          // OPTIMASI: RepaintBoundary pada Background
+          RepaintBoundary(
+            child: _buildAnimatedBackground(size),
+          ),
+
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
+                physics: const ClampingScrollPhysics(), // Lebih ringan
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -141,9 +164,13 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                         children: [
                           SizedBox(
                             height: 100,
-                            child: Lottie.asset(
-                              'assets/lottie/BookOpening.json',
-                              fit: BoxFit.contain,
+                            // OPTIMASI: RepaintBoundary pada Lottie
+                            child: RepaintBoundary(
+                              child: Lottie.asset(
+                                'assets/lottie/BookOpening.json',
+                                fit: BoxFit.contain,
+                                frameRate: FrameRate.max, // Smooth animation
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -170,7 +197,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
-                              color: AppColors.textMuted.withValues(alpha: 0.8),
+                              color:
+                                  AppColors.textMuted.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -195,6 +223,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                               color: Colors.white.withValues(alpha: 0.8),
                               width: 1.5,
                             ),
+                            // Shadow statis
                             boxShadow: [
                               BoxShadow(
                                 color: AppColors.primary.withValues(alpha: 0.1),
@@ -231,11 +260,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                               const SizedBox(height: 24),
 
                               // 5. CONNECT CONTROLLER
+                              // MODIFIKASI: Menambahkan aksi keyboard agar lebih cepat
                               MiraTextField(
                                 controller: _emailController,
                                 hintText: "Email Address",
                                 icon: Icons.alternate_email_rounded,
                                 keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.done,
+                                onSubmitted: (_) => _handleReset(),
                               ),
 
                               const SizedBox(height: 24),
@@ -268,7 +300,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(
-                              color: AppColors.textMuted.withValues(alpha: 0.1),
+                              color:
+                                  AppColors.textMuted.withValues(alpha: 0.1),
                             ),
                           ),
                           child: const Row(
@@ -304,7 +337,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
   }
 
   Widget _buildAnimatedBackground(Size size) {
-    // (Sama seperti kodemu sebelumnya)
     return Stack(
       children: [
         Positioned(
@@ -313,7 +345,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              // OPTIMASI: Turunkan sigma dari 80 ke 40
+              imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: Container(
                 width: 300,
                 height: 300,
@@ -331,7 +364,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+              // OPTIMASI: Turunkan sigma dari 90 ke 50
+              imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
               child: Container(
                 width: 250,
                 height: 250,
@@ -343,8 +377,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
             ),
           ),
         ),
+        // OPTIMASI: Turunkan backdrop blur dari 30 ke 10
         BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(color: Colors.transparent),
         ),
       ],
@@ -403,7 +438,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen>
               ),
               const SizedBox(height: 24),
               MiraButton(
-                text: "I have the code", // Changed text slightly
+                text: "I have the code",
                 onPressed: () {
                   Navigator.pop(context); // Close the dialog
 

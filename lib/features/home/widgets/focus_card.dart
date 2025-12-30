@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -14,11 +15,8 @@ class FocusSection extends StatefulWidget {
 }
 
 class _FocusSectionState extends State<FocusSection> {
-  late final Timer _timer;
-  late DateTime _now;
-
   final PageController _pageController = PageController(
-    viewportFraction: 0.94,
+    viewportFraction: 0.90,
     initialPage: 1,
   );
 
@@ -63,25 +61,24 @@ class _FocusSectionState extends State<FocusSection> {
   @override
   void initState() {
     super.initState();
-
-    _now = DateTime.now();
     _currentTip = _studyTips[Random().nextInt(_studyTips.length)];
 
     _pageController.addListener(() {
       if (!mounted) return;
       setState(() => _pageOffset = _pageController.page ?? 1.0);
     });
-
-    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _now = DateTime.now());
-    });
   }
 
   @override
   void dispose() {
-    _timer.cancel();
     _pageController.dispose();
     super.dispose();
+  }
+
+  void _randomizeTip() {
+    setState(() {
+      _currentTip = _studyTips[Random().nextInt(_studyTips.length)];
+    });
   }
 
   @override
@@ -89,29 +86,29 @@ class _FocusSectionState extends State<FocusSection> {
     return Column(
       children: [
         SizedBox(
-          height: 220,
+          height: 260,
           child: PageView.builder(
             controller: _pageController,
             physics: const BouncingScrollPhysics(),
+            clipBehavior: Clip.none,
             itemCount: 3,
             itemBuilder: (context, index) {
               return AnimatedBuilder(
                 animation: _pageController,
                 builder: (context, child) {
+                  // Kalkulasi Animasi
                   final delta = (_pageOffset - index).abs();
-                  final scale = (1 - delta * 0.15).clamp(0.9, 1.0);
-                  final rotation = (_pageOffset - index) * 0.08;
+                  final scale = (1 - delta * 0.1).clamp(0.9, 1.0);
                   final opacity = (1 - delta * 0.5).clamp(0.5, 1.0);
 
                   return Transform(
                     alignment: Alignment.center,
                     transform: Matrix4.identity()
                       ..setEntry(3, 2, 0.001)
-                      ..scaleByDouble(scale, scale, 1.0, 1.0)
-                      ..rotateY(rotation),
+                      ..scale(scale),
                     child: Opacity(
                       opacity: opacity,
-                      child: _buildHeroCard(index),
+                      child: RepaintBoundary(child: _buildHeroCard(index)),
                     ),
                   );
                 },
@@ -119,28 +116,30 @@ class _FocusSectionState extends State<FocusSection> {
             },
           ),
         ),
+        const SizedBox(height: 10),
         _buildAnimatedIndicator(),
       ],
     );
   }
 
   Widget _buildHeroCard(int index) {
+    // Gradient yang lebih vibrant
     final gradients = [
-      [const Color(0xFF0F172A), const Color(0xFF334155)],
-      [AppColors.primary, const Color(0xFF6366F1)],
-      [const Color(0xFFD97706), const Color(0xFFF59E0B)],
+      [const Color(0xFF1E293B), const Color(0xFF0F172A)],
+      [const Color(0xFF6366F1), const Color(0xFF4338CA)],
+      [const Color(0xFFF59E0B), const Color(0xFFEA580C)],
     ];
 
     final icons = [
       Icons.schedule_rounded,
-      Icons.rocket_launch_rounded,
-      Icons.auto_awesome_rounded,
+      Icons.timer_outlined,
+      Icons.lightbulb_outline_rounded,
     ];
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
+      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(35),
+        borderRadius: BorderRadius.circular(32),
         gradient: LinearGradient(
           colors: gradients[index],
           begin: Alignment.topLeft,
@@ -148,58 +147,73 @@ class _FocusSectionState extends State<FocusSection> {
         ),
         boxShadow: [
           BoxShadow(
-            color: gradients[index].first.withValues(alpha: 0.35),
-            blurRadius: 25,
-            offset: const Offset(0, 15),
-            spreadRadius: -5,
+            color: gradients[index].last.withValues(alpha: 0.4),
+            blurRadius: 20,
+            offset: const Offset(0, 12),
+            spreadRadius: -2,
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(35),
+        borderRadius: BorderRadius.circular(32),
         child: Stack(
           children: [
             Positioned(
-              top: -50,
-              left: -50,
+              top: -60,
+              right: -40,
               child: Container(
-                width: 150,
-                height: 150,
+                width: 200,
+                height: 200,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.white.withValues(alpha: 0.08),
+                  color: Colors.white.withValues(alpha: 0.05),
                 ),
               ),
             ),
             Positioned(
-              right: -10,
-              bottom: -20,
+              left: -20,
+              bottom: -30,
               child: Icon(
                 icons[index],
-                size: 130,
-                color: Colors.white.withValues(alpha: 0.06),
+                size: 140,
+                color: Colors.white.withValues(alpha: 0.05),
               ),
             ),
-            _buildCardContent(index),
+
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.1),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.3],
+                  ),
+                ),
+              ),
+            ),
+
             Material(
               color: Colors.transparent,
               child: InkWell(
-                borderRadius: BorderRadius.circular(35),
                 onTap: () {
                   if (index == 1) {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => const PomodoroScreen(),
-                      ),
+                      MaterialPageRoute(builder: (_) => const PomodoroScreen()),
                     );
                   } else if (index == 2) {
-                    setState(() {
-                      _currentTip =
-                          _studyTips[Random().nextInt(_studyTips.length)];
-                    });
+                    _randomizeTip();
                   }
                 },
+                splashColor: Colors.white.withValues(alpha: 0.1),
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: _buildCardContent(index),
+                ),
               ),
             ),
           ],
@@ -209,86 +223,114 @@ class _FocusSectionState extends State<FocusSection> {
   }
 
   Widget _buildCardContent(int index) {
+    // 0 = Jam
     if (index == 0) {
-      return Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              DateFormat('HH:mm').format(_now),
-              style: const TextStyle(
-                fontSize: 52,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: -2,
-              ),
-            ),
-            Text(
-              DateFormat('EEEE, MMM d').format(_now).toUpperCase(),
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                color: Colors.white.withValues(alpha: 0.5),
-                letterSpacing: 2,
-              ),
-            ),
-          ],
-        ),
-      );
+      return const _LiveClock();
     }
 
+    // 1 = Pomodoro
     if (index == 1) {
-      return Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildBadge("POMODORO"),
-            const Spacer(),
-            const Text(
-              "Deep Focus",
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              "Starting to lose focus? Try it",
-              style: TextStyle(color: Colors.white70),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(30),
-      child: Column(
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _buildBadge("DAILY MINDSET"),
+          _buildBadge("FOCUS TOOL", Icons.bolt_rounded),
           const Spacer(),
+          const Text(
+            "Pomodoro",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 4),
           Text(
+            "Start a session now",
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.8),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      );
+    }
+
+    // 2 = Tips
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildBadge("DAILY TIP", Icons.tips_and_updates_rounded),
+        const Spacer(),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 400),
+          transitionBuilder: (child, animation) => FadeTransition(
+            opacity: animation,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.1),
+                end: Offset.zero,
+              ).animate(animation),
+              child: child,
+            ),
+          ),
+          child: Text(
             _currentTip,
+            key: ValueKey(_currentTip),
             maxLines: 4,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.w700,
+              fontSize: 15,
               height: 1.4,
             ),
           ),
-          const SizedBox(height: 10),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Icon(
+              Icons.refresh_rounded,
+              size: 14,
+              color: Colors.white.withValues(alpha: 0.6),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              "Tap to shuffle",
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.white.withValues(alpha: 0.6),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBadge(String text, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.white),
+          const SizedBox(width: 6),
           Text(
-            "TAP FOR NEW TIP",
-            style: TextStyle(
+            text,
+            style: const TextStyle(
               fontSize: 10,
-              fontWeight: FontWeight.w900,
-              color: Colors.white.withValues(alpha: 0.4),
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+              letterSpacing: 0.5,
             ),
           ),
         ],
@@ -296,62 +338,97 @@ class _FocusSectionState extends State<FocusSection> {
     );
   }
 
-  Widget _buildBadge(String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-      ),
-      child: Text(
-        text,
-        style: const TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-          color: Colors.white,
-          letterSpacing: 1,
-        ),
-      ),
+  Widget _buildAnimatedIndicator() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(3, (index) {
+        final delta = (index - _pageOffset).abs();
+        final isActive = delta < 0.5;
+
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOutBack,
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          height: 6,
+          width: isActive ? 24.0 : 6.0, // Indikator memanjang saat aktif
+          decoration: BoxDecoration(
+            color: isActive
+                ? AppColors.primary
+                : AppColors.textMuted.withValues(alpha: 0.2),
+            borderRadius: BorderRadius.circular(10),
+          ),
+        );
+      }),
     );
   }
+}
 
-  Widget _buildAnimatedIndicator() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(3, (index) {
-          final delta = (index - _pageOffset).abs();
-          final proximity = (1 - delta).clamp(0.0, 1.0);
-          final width = 6 + (24 * proximity);
+class _LiveClock extends StatefulWidget {
+  const _LiveClock();
 
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            curve: Curves.easeOutCubic,
-            margin: const EdgeInsets.symmetric(horizontal: 4),
-            height: 6,
-            width: width,
-            decoration: BoxDecoration(
-              color: Color.lerp(
-                Colors.grey.withValues(alpha: 0.3),
-                AppColors.primary,
-                proximity,
-              ),
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: proximity > 0.6
-                  ? [
-                      BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.25),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      )
-                    ]
-                  : null,
+  @override
+  State<_LiveClock> createState() => _LiveClockState();
+}
+
+class _LiveClockState extends State<_LiveClock> {
+  late final Timer _timer;
+  late DateTime _now;
+
+  @override
+  void initState() {
+    super.initState();
+    _now = DateTime.now();
+    // Update setiap detik
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        setState(() => _now = DateTime.now());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        // JAM
+        Text(
+          DateFormat('HH:mm').format(_now),
+          style: TextStyle(
+            fontSize: 60,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            height: 1.0,
+            letterSpacing: -2,
+            fontFeatures: [ui.FontFeature.tabularFigures()],
+          ),
+        ),
+        const SizedBox(height: 8),
+        // TANGGAL
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            DateFormat('EEEE, d MMMM').format(_now).toUpperCase(),
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+              letterSpacing: 1.5,
             ),
-          );
-        }),
-      ),
+          ),
+        ),
+      ],
     );
   }
 }

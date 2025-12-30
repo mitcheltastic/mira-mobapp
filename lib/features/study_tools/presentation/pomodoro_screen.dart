@@ -329,7 +329,7 @@ class _PomodoroScreenState extends State<PomodoroScreen>
                   elevation: 0,
                 ),
                 onPressed: () => Navigator.pop(context),
-                child: const Text("I'm Ready, Let's Start",
+                child: const Text("Let's Start",
                     style:
                         TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ),

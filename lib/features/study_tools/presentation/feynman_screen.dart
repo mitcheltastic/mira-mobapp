@@ -183,7 +183,7 @@ class _FeynmanScreenState extends State<FeynmanScreen>
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.feynmanConcept,
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),

@@ -11,6 +11,7 @@ class ToolsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Data Tools didefinisikan di sini
     final tools = [
       {
         "icon": Icons.timer_outlined,
@@ -18,7 +19,8 @@ class ToolsGrid extends StatelessWidget {
         "desc": "Focus timer",
         "color": const Color(0xFFF43F5E),
         "action": () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const PomodoroScreen()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const PomodoroScreen()));
         }
       },
       {
@@ -27,7 +29,8 @@ class ToolsGrid extends StatelessWidget {
         "desc": "Explain ideas",
         "color": const Color(0xFF3B82F6),
         "action": () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const FeynmanScreen()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const FeynmanScreen()));
         }
       },
       {
@@ -36,7 +39,8 @@ class ToolsGrid extends StatelessWidget {
         "desc": "Visualize logic",
         "color": const Color(0xFF10B981),
         "action": () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const MindMapScreen()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const MindMapScreen()));
         }
       },
       {
@@ -45,7 +49,8 @@ class ToolsGrid extends StatelessWidget {
         "desc": "Quick thoughts",
         "color": const Color(0xFF8B5CF6),
         "action": () {
-          Navigator.push(context, MaterialPageRoute(builder: (context) => const NotesScreen()));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (context) => const NotesScreen()));
         }
       },
     ];
@@ -53,23 +58,17 @@ class ToolsGrid extends StatelessWidget {
     return GridView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      // 1. Padding dikurangi dari 24 ke 20 agar kartu punya ruang lebih lebar
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0), 
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
       itemCount: tools.length,
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        // 2. Jarak antar kartu dirapatkan sedikit (16 -> 12) agar kartu makin lebar
-        crossAxisSpacing: 12, 
+        crossAxisSpacing: 12,
         mainAxisSpacing: 12,
-        // 3. Aspect Ratio dinaikkan. 
-        // Coba 1.0 (Kotak) atau 1.1 (Agak Ceper). 
-        // Di sini saya pakai 1.05 agar pas (tidak terlalu kurus, tidak terlalu ceper).
-        childAspectRatio: 1.05, 
+        childAspectRatio: 1.05,
       ),
       itemBuilder: (context, index) {
         final item = tools[index];
-        return _buildCard(
-          context: context,
+        return _ToolCard(
           icon: item['icon'] as IconData,
           label: item['label'] as String,
           desc: item['desc'] as String,
@@ -79,23 +78,33 @@ class ToolsGrid extends StatelessWidget {
       },
     );
   }
+}
 
-  Widget _buildCard({
-    required BuildContext context,
-    required IconData icon,
-    required String label,
-    required String desc,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+class _ToolCard extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String desc;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ToolCard({
+    required this.icon,
+    required this.label,
+    required this.desc,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
             color: AppColors.shadow.withValues(alpha: 0.06),
-            blurRadius: 20, 
+            blurRadius: 20,
             offset: const Offset(0, 6),
           ),
         ],
@@ -114,12 +123,11 @@ class ToolsGrid extends StatelessWidget {
           highlightColor: color.withValues(alpha: 0.02),
           child: Stack(
             children: [
-              // Dekorasi Lingkaran
               Positioned(
                 top: -20,
                 right: -20,
                 child: Container(
-                  width: 90, // Dikecilkan sedikit agar proporsional dengan kotak
+                  width: 90,
                   height: 90,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -134,8 +142,7 @@ class ToolsGrid extends StatelessWidget {
               ),
 
               Padding(
-                // Padding dalam dikurangi sedikit agar konten tidak sesak
-                padding: const EdgeInsets.all(14), 
+                padding: const EdgeInsets.all(14),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -153,7 +160,7 @@ class ToolsGrid extends StatelessWidget {
                       ),
                     ),
 
-                    const Spacer(), // Mendorong konten ke bawah
+                    const Spacer(),
 
                     // Title
                     Text(
@@ -161,15 +168,15 @@ class ToolsGrid extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontSize: 15, // Font size disesuaikan
+                        fontSize: 15,
                         fontWeight: FontWeight.w700,
                         color: AppColors.textMain,
                         letterSpacing: -0.3,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 2),
-                    
+
                     // Description
                     Text(
                       desc,
@@ -185,7 +192,6 @@ class ToolsGrid extends StatelessWidget {
 
                     const SizedBox(height: 10),
 
-                    // Footer Line (Action Indicator)
                     Row(
                       children: [
                         Container(

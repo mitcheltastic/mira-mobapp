@@ -32,8 +32,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   // --- LOGIC GANTI PASSWORD ---
   Future<void> _changePassword() async {
     // 1. Validasi Input Kosong
-    if (_currentPassController.text.isEmpty || 
-        _newPassController.text.isEmpty || 
+    if (_currentPassController.text.isEmpty ||
+        _newPassController.text.isEmpty ||
         _confirmPassController.text.isEmpty) {
       _showSnackBar("Please fill in all fields.", isError: true);
       return;
@@ -58,12 +58,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     if (mounted) {
       setState(() => _isLoading = false);
       _showSnackBar("Password changed successfully!", isError: false);
-      
+
       // Opsional: Clear field setelah sukses
       _currentPassController.clear();
       _newPassController.clear();
       _confirmPassController.clear();
-      
+
       Navigator.pop(context);
     }
   }
@@ -72,7 +72,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? AppColors.error : Colors.green,
+        backgroundColor: isError ? AppColors.error : AppColors.success,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
@@ -84,47 +84,58 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: const Color(0xFFF8FAFC), // Background bersih
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textMain, size: 20),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                color: AppColors.textMain, size: 20),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
           title: const Text(
             "Security",
-            style: TextStyle(color: AppColors.textMain, fontWeight: FontWeight.bold, fontSize: 18),
+            style: TextStyle(
+                color: AppColors.textMain,
+                fontWeight: FontWeight.w800,
+                fontSize: 18),
           ),
         ),
+        // Bottom Bar untuk Tombol Save (Agar selalu terlihat)
+        bottomNavigationBar: _buildBottomBar(),
+
         body: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           physics: const BouncingScrollPhysics(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 "Change Password",
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textMain),
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textMain),
               ),
               const SizedBox(height: 8),
               const Text(
-                "Your new password must be different from previous used passwords.",
-                style: TextStyle(fontSize: 14, color: AppColors.textMuted, height: 1.5),
+                "Your new password must be different from previously used passwords.",
+                style: TextStyle(
+                    fontSize: 14, color: AppColors.textMuted, height: 1.5),
               ),
               const SizedBox(height: 24),
 
               // --- FORM SECTION ---
               Container(
-                padding: const EdgeInsets.all(20),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 15,
+                      blurRadius: 20,
                       offset: const Offset(0, 5),
                     ),
                   ],
@@ -132,11 +143,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 child: Column(
                   children: [
                     // CURRENT PASSWORD
-                    _buildPasswordField(
+                    _BuildPasswordField(
                       label: "Current Password",
                       controller: _currentPassController,
                       obscureText: _obscureCurrent,
-                      onToggleVisibility: () => setState(() => _obscureCurrent = !_obscureCurrent),
+                      onToggleVisibility: () =>
+                          setState(() => _obscureCurrent = !_obscureCurrent),
                     ),
 
                     const SizedBox(height: 10),
@@ -144,129 +156,196 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                     const SizedBox(height: 20),
 
                     // NEW PASSWORD
-                    _buildPasswordField(
+                    _BuildPasswordField(
                       label: "New Password",
                       controller: _newPassController,
                       obscureText: _obscureNew,
-                      onToggleVisibility: () => setState(() => _obscureNew = !_obscureNew),
+                      onToggleVisibility: () =>
+                          setState(() => _obscureNew = !_obscureNew),
                     ),
-                    const SizedBox(height: 8),
-                    
+                    const SizedBox(height: 12),
+
                     // PASSWORD REQUIREMENTS
                     _buildRequirementItem("Must be at least 8 characters"),
-                    _buildRequirementItem("Must contain one special character"),
-                    
+                    _buildRequirementItem(
+                        "Must contain one special character"),
+
                     const SizedBox(height: 20),
 
                     // CONFIRM PASSWORD
-                    _buildPasswordField(
+                    _BuildPasswordField(
                       label: "Confirm Password",
                       controller: _confirmPassController,
                       obscureText: _obscureConfirm,
-                      onToggleVisibility: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                      onToggleVisibility: () => setState(
+                          () => _obscureConfirm = !_obscureConfirm),
                     ),
                   ],
                 ),
               ),
+              // Tambahan padding bawah agar tidak tertutup keyboard/bottom bar
+              const SizedBox(height: 40),
             ],
-          ),
-        ),
-
-        // --- SAVE BUTTON ---
-        bottomNavigationBar: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.05),
-                blurRadius: 10,
-                offset: const Offset(0, -5),
-              ),
-            ],
-          ),
-          child: SafeArea(
-            child: ElevatedButton(
-              onPressed: _isLoading ? null : _changePassword,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
-              ),
-              child: _isLoading 
-                ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                : const Text("Change Password", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-            ),
           ),
         ),
       ),
     );
   }
 
-  // --- HELPER: PASSWORD FIELD ---
-  Widget _buildPasswordField({
-    required String label,
-    required TextEditingController controller,
-    required bool obscureText,
-    required VoidCallback onToggleVisibility,
-  }) {
+  // --- WIDGET BUILDERS ---
+
+  Widget _buildBottomBar() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: SizedBox(
+          width: double.infinity,
+          height: 56,
+          child: ElevatedButton(
+            onPressed: _isLoading ? null : _changePassword,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              elevation: 0, // Flat design
+              shadowColor: AppColors.primary.withValues(alpha: 0.4),
+            ),
+            child: _isLoading
+                ? const SizedBox(
+                    height: 24,
+                    width: 24,
+                    child: CircularProgressIndicator(
+                      color: Colors.white,
+                      strokeWidth: 2.5,
+                    ),
+                  )
+                : const Text(
+                    "Change Password",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildRequirementItem(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            height: 6,
+            width: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.success, // Indikator hijau kecil
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(
+                fontSize: 12,
+                color: AppColors.textMuted,
+                height: 1.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- WIDGET HELPER PASSWORD FIELD (Optimized) ---
+class _BuildPasswordField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final bool obscureText;
+  final VoidCallback onToggleVisibility;
+
+  const _BuildPasswordField({
+    required this.label,
+    required this.controller,
+    required this.obscureText,
+    required this.onToggleVisibility,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           label,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.textMain),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w600,
+            color: AppColors.textMain,
+          ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
           obscureText: obscureText,
-          style: const TextStyle(color: AppColors.textMain, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            color: AppColors.textMain,
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+          ),
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.white,
-            prefixIcon: const Icon(Icons.lock_outline_rounded, color: Color(0xFF94A3B8)),
+            prefixIcon: const Icon(Icons.lock_outline_rounded,
+                color: Color(0xFF94A3B8), size: 22),
             suffixIcon: IconButton(
               icon: Icon(
-                obscureText ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                obscureText
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
                 color: const Color(0xFF94A3B8),
+                size: 22,
               ),
               onPressed: onToggleVisibility,
             ),
-            contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            contentPadding:
+                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            // Border Logic
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide(
+                color: const Color(0xFFE2E8F0), // Border abu muda
+                width: 1,
+              ),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(
+                color: AppColors.primary,
+                width: 1.5,
+              ),
             ),
           ),
         ),
       ],
-    );
-  }
-
-  // --- HELPER: REQUIREMENT TEXT ---
-  Widget _buildRequirementItem(String text) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 4),
-      child: Row(
-        children: [
-          Container(
-            height: 4, width: 4,
-            decoration: const BoxDecoration(color: AppColors.textMuted, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            text,
-            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
-          ),
-        ],
-      ),
     );
   }
 }

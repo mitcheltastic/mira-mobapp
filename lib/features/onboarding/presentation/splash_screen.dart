@@ -2,8 +2,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
-
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import '../../../core/constant/app_colors.dart';
 import 'onboarding_screen.dart';
 
@@ -33,6 +33,7 @@ class _SplashScreenState extends State<SplashScreen>
       begin: 1.0,
       end: 1.15,
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
+    
     _lottieController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
         Future.delayed(const Duration(milliseconds: 500), () {
@@ -45,25 +46,13 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _navigateToNextScreen() async {
-    // 1. Cek apakah ada sesi login yang aktif di Supabase
     final session = Supabase.instance.client.auth.currentSession;
 
     if (!mounted) return;
 
-    // 2. Tentukan mau ke mana
-    // Jika session != null (artinya sudah login) -> Ke Dashboard
-    // Jika session == null (belum login) -> Ke Onboarding
-
-    // NOTE: Ganti 'DashboardScreen()' dengan widget halaman utamamu nanti
-    // Widget nextScreen = session != null ? const DashboardScreen() : const OnboardingScreen();
-
-    // SEMENTARA (Kalau belum punya Dashboard, logika if-nya disiapkan dulu):
     Widget nextScreen;
     if (session != null) {
-      // print("User sudah login, arahkan ke Dashboard");
-      // nextScreen = const DashboardScreen(); // Buka komen ini jika sudah ada file dashboard
-      nextScreen =
-          const OnboardingScreen(); // HAPUS baris ini nanti jika dashboard sudah jadi
+      nextScreen = const OnboardingScreen();
     } else {
       nextScreen = const OnboardingScreen();
     }
@@ -102,34 +91,39 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: const Color(0xFFF8FAFC),
       body: Stack(
         children: [
-          _buildAnimatedBackground(size),
+          RepaintBoundary(
+            child: _buildAnimatedBackground(size),
+          ),
 
           Center(
             child: SizedBox(
               width: size.width * 0.8,
-              child: Lottie.asset(
-                'assets/lottie/magic.json',
-                controller: _lottieController,
-                fit: BoxFit.contain,
-                onLoaded: (composition) {
-                  _lottieController
-                    ..duration = composition.duration
-                    ..forward();
-                },
-                frameBuilder: (context, child, composition) {
-                  if (composition != null) {
-                    return child;
-                  } else {
-                    return const SizedBox();
-                  }
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return const Icon(
-                    Icons.book_rounded,
-                    size: 100,
-                    color: AppColors.primary,
-                  );
-                },
+              child: RepaintBoundary(
+                child: Lottie.asset(
+                  'assets/lottie/magic.json',
+                  controller: _lottieController,
+                  fit: BoxFit.contain,
+                  frameRate: FrameRate.max,
+                  onLoaded: (composition) {
+                    _lottieController
+                      ..duration = composition.duration
+                      ..forward();
+                  },
+                  frameBuilder: (context, child, composition) {
+                    if (composition != null) {
+                      return child;
+                    } else {
+                      return const SizedBox();
+                    }
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      Icons.book_rounded,
+                      size: 100,
+                      color: AppColors.primary,
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -141,13 +135,14 @@ class _SplashScreenState extends State<SplashScreen>
   Widget _buildAnimatedBackground(Size size) {
     return Stack(
       children: [
+        // Orb 1 (Atas Kanan)
         Positioned(
           top: -80,
           right: -50,
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
               child: Container(
                 width: 300,
                 height: 300,
@@ -166,7 +161,7 @@ class _SplashScreenState extends State<SplashScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+              imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
               child: Container(
                 width: 250,
                 height: 250,
@@ -179,14 +174,13 @@ class _SplashScreenState extends State<SplashScreen>
           ),
         ),
 
-        // Orb 3 (Bawah Kanan)
         Positioned(
           bottom: -50,
           right: -20,
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 60, sigmaY: 60),
+              imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: Container(
                 width: 200,
                 height: 200,
@@ -198,10 +192,8 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         ),
-
-        // Glass Overlay untuk menyatukan warna
         BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(color: Colors.transparent),
         ),
       ],

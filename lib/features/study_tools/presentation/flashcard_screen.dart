@@ -283,7 +283,7 @@ class _FlashcardScreenState extends State<FlashcardScreen> with TickerProviderSt
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _themeColor,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 18),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                       elevation: 0,
                     ),

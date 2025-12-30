@@ -1,15 +1,13 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // Import Supabase
+import 'package:supabase_flutter/supabase_flutter.dart'; 
 import '../../../core/constant/app_colors.dart';
 
-// --- WIDGETS ---
 import '../../dashboard/widgets/dashboard_header.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/tools_grid.dart';
 
-// --- SCREEN IMPORTS ---
 import '../../study_tools/presentation/ai_chat_screen.dart';
 import '../../study_tools/presentation/blurting_screen.dart';
 import '../../study_tools/presentation/eisenhower_screen.dart';
@@ -38,8 +36,8 @@ class _HomeScreenState extends State<HomeScreen>
   late AnimationController _bgController;
   late Animation<double> _bgAnimation;
 
-  // State Data (Dari Supabase)
-  String _userName = "Friend"; // Default sebelum load
+  // State Data
+  String _userName = "Friend";
 
   // --- GLOBAL SEARCH MASTER DATA ---
   final List<Map<String, dynamic>> _masterSearchData = [
@@ -122,26 +120,21 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-
-    // 1. Panggil data user (Fitur Teman)
     _getUserProfile();
-
-    // 2. Setup Search Listener (Fitur Kamu)
     _searchController.addListener(_onSearchChanged);
 
-    // 3. Setup Animasi Background (Fitur Kamu)
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 8),
     )..repeat(reverse: true);
 
     _bgAnimation = Tween<double>(
-      begin: -15,
-      end: 15,
+      begin: -20,
+      end: 20,
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
   }
 
-  // --- FUNGSI SUPABASE (Milik Teman) ---
+  // --- FUNGSI SUPABASE ---
   Future<void> _getUserProfile() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -155,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (mounted) {
           setState(() {
             String fullName = data['full_name'] ?? "Friend";
-            _userName = fullName.split(' ')[0]; // Ambil nama depan
+            _userName = fullName.split(' ')[0];
           });
         }
       }
@@ -164,7 +157,7 @@ class _HomeScreenState extends State<HomeScreen>
     }
   }
 
-  // --- FUNGSI SEARCH (Milik Kamu) ---
+  // --- FUNGSI SEARCH ---
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -213,34 +206,38 @@ class _HomeScreenState extends State<HomeScreen>
     );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: const Color(0xFFFAFAFA),
       body: Stack(
         children: [
-          // Background Animation (Fitur Kamu)
-          _buildBackgroundDecoration(),
+          RepaintBoundary(child: _buildBackgroundDecoration()),
 
+          // Content Layer
           SafeArea(
             bottom: false,
             child: Column(
               children: [
-                // Header (Digabung: Layout Kamu + Data Teman)
-                if (!_isSearching) ...[
-                  DashboardHeader(
-                    userName: _userName,
-                    isPro: true,
-                  ), // Pakai _userName dari Supabase
-                  const SizedBox(height: 8),
-                ] else ...[
-                  const SizedBox(height: 20),
-                ],
+                AnimatedSize(
+                  duration: const Duration(milliseconds: 300),
+                  child: _isSearching
+                      ? const SizedBox(height: 10)
+                      : Column(
+                          children: [
+                            DashboardHeader(
+                              userName: _userName,
+                              isPro: true,
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                        ),
+                ),
 
+                // Search Bar
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: _buildFunctionalSearchBar(),
                 ),
 
                 const SizedBox(height: 24),
-
                 Expanded(
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 300),
@@ -273,8 +270,6 @@ class _HomeScreenState extends State<HomeScreen>
           ),
           const SizedBox(height: 18),
 
-          // Gunakan FocusSection (Design Kamu) atau FocusCard (Design Teman)
-          // Disini saya pakai FocusSection (asumsi kamu punya widget ini di folder dashboard)
           const FocusSection(),
 
           const SizedBox(height: 36),
@@ -303,8 +298,8 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             Icon(
               Icons.manage_search_rounded,
-              size: 64,
-              color: AppColors.textMuted.withValues(alpha: 0.2),
+              size: 80, // MODIFIKASI: Icon lebih besar
+              color: AppColors.primary.withValues(alpha: 0.2),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -320,18 +315,25 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
-    return ListView.builder(
+    return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       physics: const BouncingScrollPhysics(),
       itemCount: _searchResults.length,
+      separatorBuilder: (c, i) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final item = _searchResults[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: AppColors.freeBorder),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.shadow.withValues(alpha: 0.05),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.all(12),
@@ -343,45 +345,18 @@ class _HomeScreenState extends State<HomeScreen>
               ),
               child: Icon(item['icon'], color: item['color'], size: 24),
             ),
-            title: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    item['title'],
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textMain,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    item['category'].toString().toUpperCase(),
-                    style: const TextStyle(
-                      fontSize: 8,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textMuted,
-                    ),
-                  ),
-                ),
-              ],
+            title: Text(
+              item['title'],
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textMain,
+              ),
             ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Text(
-                item['desc'],
-                style: const TextStyle(
-                  color: AppColors.textMuted,
-                  fontSize: 12,
-                ),
+            subtitle: Text(
+              item['desc'],
+              style: const TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 12,
               ),
             ),
             trailing: const Icon(
@@ -410,14 +385,14 @@ class _HomeScreenState extends State<HomeScreen>
         border: Border.all(
           color: _isSearching
               ? AppColors.primary.withValues(alpha: 0.5)
-              : AppColors.freeBorder,
-          width: 1,
+              : Colors.transparent,
+          width: 1.5,
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow.withValues(alpha: 0.06),
-            blurRadius: 15,
-            offset: const Offset(0, 6),
+            color: AppColors.shadow.withValues(alpha: 0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -429,7 +404,7 @@ class _HomeScreenState extends State<HomeScreen>
           fontSize: 14,
         ),
         decoration: InputDecoration(
-          hintText: "Search features...",
+          hintText: "What do you want to learn?",
           hintStyle: TextStyle(
             color: AppColors.textMuted.withValues(alpha: 0.5),
             fontSize: 14,
@@ -437,8 +412,8 @@ class _HomeScreenState extends State<HomeScreen>
           border: InputBorder.none,
           prefixIcon: const Icon(
             Icons.search_rounded,
-            color: AppColors.textMuted,
-            size: 22,
+            color: AppColors.primary,
+            size: 24,
           ),
           suffixIcon: _isSearching
               ? IconButton(
@@ -477,6 +452,7 @@ class _HomeScreenState extends State<HomeScreen>
                 letterSpacing: -0.5,
               ),
             ),
+            const SizedBox(height: 2),
             Text(
               subtitle,
               style: const TextStyle(
@@ -488,14 +464,18 @@ class _HomeScreenState extends State<HomeScreen>
           ],
         ),
         if (actionText != null)
-          TextButton(
-            onPressed: onAction,
-            child: Text(
-              actionText,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: AppColors.primary,
+          InkWell(
+            onTap: onAction,
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                actionText,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
               ),
             ),
           ),
@@ -504,55 +484,61 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildBackgroundDecoration() {
-    return AnimatedBuilder(
-      animation: _bgAnimation,
-      builder: (context, child) {
-        return Stack(
-          children: [
-            Positioned(
-              top: -80 + _bgAnimation.value,
-              right: -60,
-              child: _buildBlob(
-                300,
-                AppColors.primary.withValues(alpha: 0.07),
-                60,
-              ),
-            ),
-            Positioned(
-              top: 350 - _bgAnimation.value,
-              left: -80,
-              child: _buildBlob(
-                250,
-                AppColors.secondary.withValues(alpha: 0.05),
-                50,
-              ),
-            ),
-            Positioned.fill(
-              child: Opacity(
-                opacity: 0.2,
-                child: CustomPaint(painter: DotPatternPainter()),
-              ),
-            ),
-          ],
-        );
-      },
+    return Stack(
+      children: [
+        AnimatedBuilder(
+          animation: _bgAnimation,
+          builder: (context, child) {
+            return Stack(
+              children: [
+                Positioned(
+                  top: -80 + _bgAnimation.value,
+                  right: -60,
+                  child: _buildOptimizedBlob(
+                    300,
+                    AppColors.primary.withValues(alpha: 0.08),
+                  ),
+                ),
+                Positioned(
+                  top: 350 - _bgAnimation.value,
+                  left: -80,
+                  child: _buildOptimizedBlob(
+                    250,
+                    AppColors.secondary.withValues(alpha: 0.06),
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+        Positioned.fill(
+          child: Opacity(
+            opacity: 0.2,
+            child: CustomPaint(painter: const DotPatternPainter()),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildBlob(double size, Color color, double blur) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blur, sigmaY: blur),
-        child: Container(color: Colors.transparent),
+  Widget _buildOptimizedBlob(double size, Color color) {
+    return ImageFiltered(
+      imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: color,
+        ),
       ),
     );
   }
 }
 
 class DotPatternPainter extends CustomPainter {
+  const DotPatternPainter();
+
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()

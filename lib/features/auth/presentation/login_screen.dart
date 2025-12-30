@@ -2,13 +2,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
-// 1. Import Repository & Supabase (if needed for specific exceptions)
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../data/auth_repository.dart';
 import 'package:local_auth/local_auth.dart';
 
-// Sesuaikan import path
 import '../../../core/constant/app_colors.dart';
 import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
@@ -29,17 +28,16 @@ class _LoginScreenState extends State<LoginScreen>
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
 
-  // 2. ADD TEXT CONTROLLERS
   final TextEditingController _emailController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
 
-  // 3. ADD LOADING STATE
   bool _isLoading = false;
 
-  // Controller untuk Animasi Form
   late AnimationController _formController;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
+
+  final LocalAuthentication auth = LocalAuthentication();
 
   @override
   void initState() {
@@ -64,8 +62,8 @@ class _LoginScreenState extends State<LoginScreen>
 
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
-          CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
-        );
+      CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
+    );
 
     _fadeAnimation = Tween<double>(
       begin: 0.0,
@@ -77,22 +75,48 @@ class _LoginScreenState extends State<LoginScreen>
 
   @override
   void dispose() {
-    // 4. DISPOSE TEXT CONTROLLERS
     _emailController.dispose();
     _passwordController.dispose();
-
     _bgController.dispose();
     _formController.dispose();
     super.dispose();
   }
 
-  // 5. LOGIN LOGIC
+  void _showSnackBar(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   Future<void> _handleLogin() async {
-    // Basic Validation
-    if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please fill in all fields")),
-      );
+    // 1. Validasi Input Lebih Spesifik
+    final email = _emailController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (email.isEmpty) {
+      _showSnackBar("Email address is required.");
+      return;
+    }
+
+    if (password.isEmpty) {
+      _showSnackBar("Password is required.");
       return;
     }
 
@@ -101,50 +125,31 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final authRepo = AuthRepository();
 
-      // Call Supabase Login
       await authRepo.signIn(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
+        email: email,
+        password: password,
       );
 
       if (mounted) {
-        // Success Feedback
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Welcome back!"),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        _showSnackBar("Welcome back!", isError: false);
 
         // Navigate to Dashboard
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+          MaterialPageRoute(
+              builder: (context) => const MainNavigationScreen()),
           (route) => false,
         );
       }
     } on AuthException catch (e) {
-      // Specific Supabase Error (e.g., Wrong password)
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              e.message,
-            ), // Shows "Invalid login credentials" nicely
-            backgroundColor: AppColors.error,
-          ),
-        );
+      String errorMessage = e.message;
+      if (e.message.toLowerCase().contains("invalid login credentials")) {
+        errorMessage = "Incorrect email or password.";
       }
+
+      _showSnackBar(errorMessage);
     } catch (e) {
-      // General Error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error: ${e.toString()}"),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
+      _showSnackBar("An unexpected error occurred: ${e.toString()}");
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -152,14 +157,11 @@ class _LoginScreenState extends State<LoginScreen>
     }
   }
 
-  // --- PASTE THIS NEW FUNCTION HERE ---
+  // --- GOOGLE SIGN IN ---
   Future<void> _googleSignIn() async {
-    // 1. Set loading state
     setState(() => _isLoading = true);
 
     try {
-      // 2. Setup Google Sign In
-      // IMPORTANT: Use the WEB Client ID you created in Google Cloud Console
       const webClientId =
           '95756928282-jnmgsvcusb26oql90mugkepbqe0qije3.apps.googleusercontent.com';
 
@@ -169,9 +171,8 @@ class _LoginScreenState extends State<LoginScreen>
 
       final googleUser = await googleSignIn.signIn();
 
-      // If user cancels the login window
       if (googleUser == null) {
-        return;
+        return; // User canceled
       }
 
       final googleAuth = await googleUser.authentication;
@@ -182,82 +183,49 @@ class _LoginScreenState extends State<LoginScreen>
         throw 'No ID Token found.';
       }
 
-      // 3. Send tokens to Supabase
       await Supabase.instance.client.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: idToken,
         accessToken: accessToken,
       );
 
-      // 4. Success! Navigate to Dashboard
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Google Login Successful!"),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        _showSnackBar("Google Login Successful!", isError: false);
 
         Navigator.pushAndRemoveUntil(
           context,
-          MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+          MaterialPageRoute(
+              builder: (context) => const MainNavigationScreen()),
           (route) => false,
         );
       }
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Google Login Failed: $error"),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
+      _showSnackBar("Google Login Failed: $error");
     } finally {
-      // 5. Stop loading state
       if (mounted) {
         setState(() => _isLoading = false);
       }
     }
   }
-  // --- END OF NEW FUNCTION ---
 
-  final LocalAuthentication auth = LocalAuthentication();
-
+  // --- BIOMETRIC AUTH ---
   Future<void> _authenticateWithBiometrics() async {
-    // 1. Check if the device supports biometrics
     final bool canAuthenticateWithBiometrics = await auth.canCheckBiometrics;
     final bool canAuthenticate =
         canAuthenticateWithBiometrics || await auth.isDeviceSupported();
 
     if (!canAuthenticate) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Biometrics not available on this device'),
-          ),
-        );
-      }
+      _showSnackBar('Biometrics not available on this device');
       return;
     }
 
-    // 2. Check if the user is actually logged in (Supabase session exists)
     final session = Supabase.instance.client.auth.currentSession;
     if (session == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Please log in with Email or Google first to enable biometrics.',
-            ),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
+      _showSnackBar(
+          'Please log in with Email or Google first to enable biometrics.');
       return;
     }
 
-    // 3. Trigger the Fingerprint Prompt
     try {
       final bool didAuthenticate = await auth.authenticate(
         localizedReason: 'Please authenticate to access your account',
@@ -267,21 +235,11 @@ class _LoginScreenState extends State<LoginScreen>
         ),
       );
 
-      if (didAuthenticate) {
-        // 4. Success! Navigate to Home
-        if (mounted) {
-          Navigator.pushReplacementNamed(
-            context,
-            '/home',
-          ); // Check your route name!
-        }
+      if (didAuthenticate && mounted) {
+        Navigator.pushReplacementNamed(context, '/home');
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
-      }
+      _showSnackBar('Error: $e');
     }
   }
 
@@ -301,14 +259,14 @@ class _LoginScreenState extends State<LoginScreen>
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          // LAYER 1: Background Mesh
-          _buildAnimatedBackground(size),
+          RepaintBoundary(
+            child: _buildAnimatedBackground(size),
+          ),
 
-          // LAYER 2: Main Content
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
+                physics: const ClampingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -320,9 +278,12 @@ class _LoginScreenState extends State<LoginScreen>
                         children: [
                           SizedBox(
                             height: 100,
-                            child: Lottie.asset(
-                              'assets/lottie/BookOpening.json',
-                              fit: BoxFit.contain,
+                            child: RepaintBoundary(
+                              child: Lottie.asset(
+                                'assets/lottie/BookOpening.json',
+                                fit: BoxFit.contain,
+                                frameRate: FrameRate.max,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -349,7 +310,8 @@ class _LoginScreenState extends State<LoginScreen>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
-                              color: AppColors.textMuted.withValues(alpha: 0.8),
+                              color:
+                                  AppColors.textMuted.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -357,8 +319,6 @@ class _LoginScreenState extends State<LoginScreen>
                     ),
 
                     const SizedBox(height: 24),
-
-                    // --- GLASS CARD FORM ---
                     SlideTransition(
                       position: _slideAnimation,
                       child: FadeTransition(
@@ -376,7 +336,8 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.1),
+                                color: AppColors.primary
+                                    .withValues(alpha: 0.1),
                                 blurRadius: 40,
                                 offset: const Offset(0, 20),
                                 spreadRadius: -10,
@@ -396,7 +357,6 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
                               const SizedBox(height: 20),
 
-                              // 6. CONNECT CONTROLLERS
                               MiraTextField(
                                 controller: _emailController,
                                 hintText: "Email Address",
@@ -438,33 +398,26 @@ class _LoginScreenState extends State<LoginScreen>
 
                               const SizedBox(height: 20),
 
-                              // 7. CONNECT BUTTON LOGIC
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  // Your existing Login Button logic...
                                   Expanded(
                                     child: MiraButton(
                                       text: _isLoading
                                           ? "Logging In..."
                                           : "Log In",
-                                      onPressed: _isLoading
-                                          ? null
-                                          : _handleLogin,
+                                      onPressed:
+                                          _isLoading ? null : _handleLogin,
                                     ),
                                   ),
-
                                   const SizedBox(width: 16),
-
-                                  // --- NEW BIOMETRIC BUTTON ---
                                   Container(
                                     decoration: BoxDecoration(
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: AppColors.primary.withValues(
-                                          alpha: 0.2,
-                                        ), // <--- This fixes it
+                                        color: AppColors.primary
+                                            .withValues(alpha: 0.2),
                                       ),
                                     ),
                                     child: IconButton(
@@ -481,12 +434,9 @@ class _LoginScreenState extends State<LoginScreen>
                               ),
 
                               const SizedBox(height: 24),
-
                               const _DividerWithText(text: "or"),
-
                               const SizedBox(height: 20),
 
-                              // --- GOOGLE BUTTON (Still UI Only) ---
                               SizedBox(
                                 width: double.infinity,
                                 height: 50,
@@ -494,16 +444,16 @@ class _LoginScreenState extends State<LoginScreen>
                                   style: OutlinedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     side: BorderSide(
-                                      color: AppColors.textMuted.withValues(
-                                        alpha: 0.2,
-                                      ),
+                                      color: AppColors.textMuted
+                                          .withValues(alpha: 0.2),
                                     ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     elevation: 0,
                                   ),
-                                  onPressed: _isLoading ? null : _googleSignIn,
+                                  onPressed:
+                                      _isLoading ? null : _googleSignIn,
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -533,7 +483,6 @@ class _LoginScreenState extends State<LoginScreen>
 
                     const SizedBox(height: 24),
 
-                    // --- FOOTER ---
                     FadeTransition(
                       opacity: _fadeAnimation,
                       child: Row(
@@ -548,7 +497,8 @@ class _LoginScreenState extends State<LoginScreen>
                               Navigator.pushReplacement(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => const RegisterScreen(),
+                                  builder: (context) =>
+                                      const RegisterScreen(),
                                 ),
                               );
                             },
@@ -582,7 +532,7 @@ class _LoginScreenState extends State<LoginScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: Container(
                 width: 300,
                 height: 300,
@@ -600,7 +550,7 @@ class _LoginScreenState extends State<LoginScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+              imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
               child: Container(
                 width: 250,
                 height: 250,
@@ -613,7 +563,7 @@ class _LoginScreenState extends State<LoginScreen>
           ),
         ),
         BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(color: Colors.transparent),
         ),
       ],
@@ -630,7 +580,8 @@ class _DividerWithText extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Divider(color: AppColors.textMuted.withValues(alpha: 0.2)),
+          child: Divider(
+              color: AppColors.textMuted.withValues(alpha: 0.2)),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -643,7 +594,8 @@ class _DividerWithText extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Divider(color: AppColors.textMuted.withValues(alpha: 0.2)),
+          child: Divider(
+              color: AppColors.textMuted.withValues(alpha: 0.2)),
         ),
       ],
     );
