@@ -10,7 +10,7 @@ import '../data/auth_repository.dart';
 import 'login_screen.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
-  final String email; // We pass the email from the previous screen
+  final String email;
 
   const ResetPasswordScreen({super.key, required this.email});
 

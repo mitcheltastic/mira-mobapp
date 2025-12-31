@@ -4,47 +4,90 @@ import '../../../core/constant/app_colors.dart';
 class DashboardHeader extends StatelessWidget {
   final String userName;
   final bool isPro;
+  final VoidCallback? onAvatarTap;
 
-  const DashboardHeader({super.key, required this.userName, this.isPro = true});
+  const DashboardHeader({
+    super.key,
+    required this.userName,
+    this.isPro = true,
+    this.onAvatarTap,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Memberikan ruang nafas pada header
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+      // Padding disamakan dengan StudyScreen & ChatsScreen (24, 24, 24, 16)
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // BAGIAN KIRI: TEKS
+          // --- BAGIAN KIRI: TEKS ---
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                ShaderMask(
-                  shaderCallback: (bounds) => const LinearGradient(
-                    colors: [AppColors.textMain, AppColors.primary],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ).createShader(bounds),
-                  child: Text(
-                    "Hello, $userName",
-                    style: const TextStyle(
-                      fontSize: 26, // Ukuran sedikit disesuaikan agar lebih proporsional
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                      letterSpacing: -0.8,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                // 1. Sapaan kecil (Opsional, atau bisa digabung)
+                Text(
+                  "Hello,",
+                  style: TextStyle(
+                    fontSize: 24,
+                    color: AppColors.textMain.withValues(alpha: 0.6),
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: -0.5,
                   ),
                 ),
-                const SizedBox(height: 2),
+                
+                // 2. Nama User (Style Title H1 - Konsisten dengan "Study Hub" / "Messages")
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        userName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 32, // Ukuran font header standar aplikasi
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textMain,
+                          letterSpacing: -1.0,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                    
+                    // 3. Badge PRO (Minimalis di sebelah nama)
+                    if (isPro) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF59E0B), // Warna Emas/Orange Pro
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: const Text(
+                          "PRO",
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                
+                const SizedBox(height: 4),
+
+                // 4. Subtitle konsisten
                 Text(
-                  "Let's start our journey",
+                  "Let's start your journey today",
                   style: TextStyle(
-                    color: AppColors.textMuted.withValues(alpha: 0.7),
-                    fontSize: 14,
+                    fontSize: 15,
+                    color: AppColors.textMuted.withValues(alpha: 0.8),
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -52,94 +95,40 @@ class DashboardHeader extends StatelessWidget {
             ),
           ),
 
-          // BAGIAN KANAN: BADGE & AVATAR
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // BADGE STATUS (PRO/FREE)
-              _buildStatusBadge(),
-              
-              const SizedBox(width: 16),
-
-              // AVATAR DENGAN RING DESIGN
-              _buildAvatar(),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusBadge() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isPro ? AppColors.proBg : AppColors.freeBg,
-        borderRadius: BorderRadius.circular(20), // Pill style lebih rapi
-        border: Border.all(
-          color: isPro ? AppColors.proBorder : AppColors.freeBorder,
-          width: 1,
-        ),
-      ),
-      child: Row(
-        children: [
-          if (isPro) ...[
-            const Icon(
-              Icons.verified_rounded,
-              size: 14,
-              color: AppColors.proGold,
-            ),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            isPro ? "PRO" : "FREE",
-            style: TextStyle(
-              fontSize: 10,
-              fontWeight: FontWeight.w900,
-              color: isPro ? AppColors.proGold : AppColors.textMuted,
-              letterSpacing: 0.8,
+          // --- BAGIAN KANAN: AVATAR (Simple Clean) ---
+          const SizedBox(width: 16),
+          GestureDetector(
+            onTap: onAvatarTap,
+            child: Container(
+              width: 52,
+              height: 52,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white,
+                border: Border.all(color: AppColors.freeBorder),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.shadow.withValues(alpha: 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(50),
+                child: Container(
+                  color: AppColors.primary.withValues(alpha: 0.05),
+                  child: const Icon(
+                    Icons.person_rounded,
+                    color: AppColors.textMain,
+                    size: 30,
+                  ),
+                  // Nanti ganti child ini dengan Image.asset(...) jika sudah ada foto
+                ),
+              ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAvatar() {
-    return Container(
-      width: 52,
-      height: 52,
-      padding: const EdgeInsets.all(2), // Jarak untuk ring border luar
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: AppColors.primary.withValues(alpha: 0.2),
-          width: 1,
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(50),
-          child: Container(
-            color: AppColors.primary.withValues(alpha: 0.08),
-            child: const Icon(
-              Icons.person_rounded,
-              color: AppColors.primary,
-              size: 30,
-            ),
-          ),
-        ),
       ),
     );
   }

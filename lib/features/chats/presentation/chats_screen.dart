@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import '../../../core/constant/app_colors.dart';
 import '../data/chat_user_model.dart';
@@ -15,6 +16,20 @@ class _ChatsScreenState extends State<ChatsScreen> {
   List<ChatPreview> _allChats = [];
   List<ChatPreview> _foundChats = [];
   final TextEditingController _searchController = TextEditingController();
+
+  // Dummy data
+  final List<ChatPreview> dummyChats = [
+    ChatPreview(
+        user: ChatUser(name: "Dr. Sarah", isOnline: true),
+        lastMessage: "Jadwal bimbingan besok jam 10 ya",
+        time: "10:30 AM",
+        unreadCount: 2),
+    ChatPreview(
+        user: ChatUser(name: "Rino (Ketua Kelas)", isOnline: false),
+        lastMessage: "File tugasnya sudah dikirim di grup",
+        time: "Yesterday",
+        unreadCount: 0),
+  ];
 
   @override
   void initState() {
@@ -46,28 +61,25 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 
   void _deleteChat(int index) {
-    // Simpan item untuk fitur Undo
     final deletedItem = _foundChats[index];
-    
     setState(() {
       _foundChats.removeAt(index);
-      // Hapus juga dari _allChats agar sinkron
       _allChats.removeWhere((item) => item.user.name == deletedItem.user.name);
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: const Text("Conversation deleted"),
-        backgroundColor: AppColors.textMain,
+        content: const Text("Chat deleted"),
+        backgroundColor: Colors.black87,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 100),
         action: SnackBarAction(
           label: 'Undo',
           textColor: AppColors.primary,
           onPressed: () {
             setState(() {
               _foundChats.insert(index, deletedItem);
-              _allChats.add(deletedItem); // Kembalikan ke list utama
+              _allChats.add(deletedItem);
             });
           },
         ),
@@ -75,33 +87,24 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
-  Future<bool> _showConfirmationDialog(BuildContext context, String name) async {
+  Future<bool> _showConfirmationDialog(
+      BuildContext context, String name) async {
     return await showDialog(
           context: context,
           builder: (BuildContext context) {
             return AlertDialog(
-              backgroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
               title: const Text("Delete Chat?"),
-              content: Text(
-                "Are you sure you want to delete conversation with $name?",
-                style: const TextStyle(color: AppColors.textMuted),
-              ),
+              content: Text("Delete conversation with $name?"),
               actions: <Widget>[
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
                   child: const Text("Cancel",
-                      style: TextStyle(color: AppColors.textMuted)),
+                      style: TextStyle(color: Colors.grey)),
                 ),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text(
-                    "Delete",
-                    style: TextStyle(
-                        color: AppColors.error, fontWeight: FontWeight.bold),
-                  ),
+                  child:
+                      const Text("Delete", style: TextStyle(color: Colors.red)),
                 ),
               ],
             );
@@ -112,83 +115,47 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.dark,
+    ));
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA), // Background bersih
+      backgroundColor: const Color(0xFFFAFAFA),
+
       body: SafeArea(
+        bottom: false,
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- HEADER & SEARCH ---
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 20, 24, 20),
-              color: const Color(0xFFFAFAFA),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
                     "Messages",
                     style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
+                      fontSize: 32,
+                      fontWeight: FontWeight.w900,
                       color: AppColors.textMain,
-                      letterSpacing: -0.5,
+                      letterSpacing: -1.0,
                     ),
                   ),
-                  const SizedBox(height: 20),
-                  // Modern Search Bar
-                  Container(
-                    height: 50,
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                          color: AppColors.freeBorder.withValues(alpha: 0.6)),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.shadow.withValues(alpha: 0.05),
-                          blurRadius: 15,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      controller: _searchController,
-                      onChanged: (value) => _runFilter(value),
-                      style: const TextStyle(
-                          color: AppColors.textMain,
-                          fontWeight: FontWeight.w500),
-                      decoration: InputDecoration(
-                        hintText: "Search conversations...",
-                        hintStyle: TextStyle(
-                          color: AppColors.textMuted.withValues(alpha: 0.5),
-                          fontSize: 14,
-                        ),
-                        prefixIcon: Icon(
-                          Icons.search_rounded,
-                          color: AppColors.textMuted.withValues(alpha: 0.6),
-                          size: 22,
-                        ),
-                        border: InputBorder.none,
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                        suffixIcon: _searchController.text.isNotEmpty
-                            ? IconButton(
-                                icon: const Icon(Icons.clear, size: 18),
-                                color: AppColors.textMuted,
-                                onPressed: () {
-                                  _searchController.clear();
-                                  _runFilter('');
-                                },
-                              )
-                            : null,
-                      ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Connect with your friends",
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: AppColors.textMuted.withValues(alpha: 0.8),
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
+                  const SizedBox(height: 24),
+                  _buildSearchBar(),
                 ],
               ),
             ),
 
-            // --- CHAT LIST ---
             Expanded(
               child: _foundChats.isEmpty
                   ? Center(
@@ -196,29 +163,29 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            Icons.mark_chat_unread_rounded,
-                            size: 64,
-                            color: AppColors.textMuted.withValues(alpha: 0.2),
+                            Icons.chat_bubble_outline_rounded,
+                            size: 80,
+                            color: Colors.grey.withValues(alpha: 0.3),
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            "No messages found",
+                            "No chats yet",
                             style: TextStyle(
-                              color: AppColors.textMuted.withValues(alpha: 0.5),
-                              fontWeight: FontWeight.w600,
+                              color: Colors.grey.withValues(alpha: 0.6),
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(24, 0, 24, 100),
+                  : ListView.builder(
                       physics: const BouncingScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 120),
                       itemCount: _foundChats.length,
-                      separatorBuilder: (c, i) => const SizedBox(height: 16),
                       itemBuilder: (context, index) {
                         final chat = _foundChats[index];
-                        return _buildChatSlidable(chat, index);
+                        return _buildChatTile(chat, index);
                       },
                     ),
             ),
@@ -228,11 +195,64 @@ class _ChatsScreenState extends State<ChatsScreen> {
     );
   }
 
-  Widget _buildChatSlidable(ChatPreview chat, int index) {
+  Widget _buildSearchBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.freeBorder),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.shadow.withValues(alpha: 0.05),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: _searchController,
+        onChanged: (value) => _runFilter(value),
+        style: const TextStyle(
+            color: AppColors.textMain, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: "Search conversations...",
+          hintStyle: TextStyle(
+            color: AppColors.textMuted.withValues(alpha: 0.5),
+            fontSize: 14,
+          ),
+          prefixIcon: Padding(
+            padding: const EdgeInsets.only(left: 16, right: 12),
+            child: Icon(
+              Icons.search_rounded,
+              color: AppColors.primary.withValues(alpha: 0.8),
+              size: 24,
+            ),
+          ),
+          prefixIconConstraints:
+              const BoxConstraints(minWidth: 0, minHeight: 0),
+          border: InputBorder.none,
+          contentPadding:
+              const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.close, size: 20),
+                  color: AppColors.textMuted,
+                  onPressed: () {
+                    _searchController.clear();
+                    _runFilter('');
+                  },
+                )
+              : null,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChatTile(ChatPreview chat, int index) {
     return Slidable(
       key: Key(chat.user.name),
       endActionPane: ActionPane(
-        motion: const ScrollMotion(), // Lebih smooth dari StretchMotion
+        motion: const DrawerMotion(),
         extentRatio: 0.25,
         dismissible: DismissiblePane(
           onDismissed: () => _deleteChat(index),
@@ -240,30 +260,20 @@ class _ChatsScreenState extends State<ChatsScreen> {
               await _showConfirmationDialog(context, chat.user.name),
         ),
         children: [
-          CustomSlidableAction(
+          SlidableAction(
             onPressed: (context) async {
               bool confirm =
                   await _showConfirmationDialog(context, chat.user.name);
               if (confirm) _deleteChat(index);
             },
-            backgroundColor: Colors.transparent,
-            foregroundColor: AppColors.error,
-            padding: EdgeInsets.zero,
-            child: Container(
-              margin: const EdgeInsets.only(left: 12),
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(
-                color: AppColors.error.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.delete_outline_rounded,
-                  color: AppColors.error, size: 24),
-            ),
+            backgroundColor: Colors.red.shade500,
+            foregroundColor: Colors.white,
+            icon: Icons.delete_outline,
+            label: 'Delete',
           ),
         ],
       ),
-      child: GestureDetector(
+      child: InkWell(
         onTap: () {
           Navigator.push(
             context,
@@ -272,59 +282,51 @@ class _ChatsScreenState extends State<ChatsScreen> {
             ),
           );
         },
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: chat.unreadCount > 0
-                  ? AppColors.primary.withValues(alpha: 0.2)
-                  : Colors.transparent,
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: AppColors.shadow.withValues(alpha: 0.04),
-                blurRadius: 15,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // Avatar
-              Hero(
-                tag: chat.user.name,
-                child: Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: chat.unreadCount > 0
+              Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 28,
+                    backgroundColor: chat.unreadCount > 0
                         ? AppColors.primary.withValues(alpha: 0.1)
-                        : const Color(0xFFF1F5F9),
-                  ),
-                  child: Center(
+                        : Colors.grey.shade200,
                     child: Text(
                       chat.user.name[0].toUpperCase(),
                       style: TextStyle(
                         color: chat.unreadCount > 0
                             ? AppColors.primary
-                            : AppColors.textMuted,
+                            : Colors.grey.shade600,
                         fontWeight: FontWeight.bold,
-                        fontSize: 20,
+                        fontSize: 22,
                       ),
                     ),
                   ),
-                ),
+                  if (chat.user.isOnline)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 16),
-              
-              // Chat Info
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -332,10 +334,12 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         Text(
                           chat.user.name,
                           style: const TextStyle(
-                            fontWeight: FontWeight.w700,
+                            fontWeight: FontWeight.w600,
                             fontSize: 16,
-                            color: AppColors.textMain,
+                            color: Colors.black87,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                         Text(
                           chat.time,
@@ -343,7 +347,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             fontSize: 12,
                             color: chat.unreadCount > 0
                                 ? AppColors.primary
-                                : AppColors.textMuted.withValues(alpha: 0.7),
+                                : Colors.grey.shade500,
                             fontWeight: chat.unreadCount > 0
                                 ? FontWeight.w600
                                 : FontWeight.normal,
@@ -351,22 +355,23 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 4),
                     Row(
                       children: [
                         Expanded(
                           child: Text(
                             chat.lastMessage,
-                            maxLines: 1,
+                            maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontSize: 14,
                               color: chat.unreadCount > 0
-                                  ? AppColors.textMain
-                                  : AppColors.textMuted,
+                                  ? Colors.black87
+                                  : Colors.grey.shade600,
                               fontWeight: chat.unreadCount > 0
-                                  ? FontWeight.w600
+                                  ? FontWeight.w500
                                   : FontWeight.normal,
+                              height: 1.3,
                             ),
                           ),
                         ),
