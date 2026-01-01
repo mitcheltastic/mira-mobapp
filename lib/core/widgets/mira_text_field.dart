@@ -8,6 +8,10 @@ class MiraTextField extends StatefulWidget {
   final TextEditingController? controller;
   final TextInputType keyboardType;
 
+  // --- TAMBAHAN BARU (Agar error hilang) ---
+  final TextInputAction? textInputAction;
+  final Function(String)? onSubmitted;
+
   const MiraTextField({
     super.key,
     required this.hintText,
@@ -15,6 +19,9 @@ class MiraTextField extends StatefulWidget {
     this.isPassword = false,
     this.controller,
     this.keyboardType = TextInputType.text,
+    // --- MASUKKAN KE CONSTRUCTOR ---
+    this.textInputAction,
+    this.onSubmitted,
   });
 
   @override
@@ -29,7 +36,7 @@ class _MiraTextFieldState extends State<MiraTextField> {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.grey[50], // Background agak abu sangat muda agar kontras dengan putih
+        color: Colors.grey[50], // Style aslimu tetap aman
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: Colors.grey.shade200),
       ),
@@ -37,9 +44,17 @@ class _MiraTextFieldState extends State<MiraTextField> {
         controller: widget.controller,
         obscureText: widget.isPassword ? _obscureText : false,
         keyboardType: widget.keyboardType,
+        
+        // --- SAMBUNGKAN PARAMETER BARU KE SINI ---
+        textInputAction: widget.textInputAction,
+        onSubmitted: widget.onSubmitted,
+
         style: const TextStyle(color: AppColors.textMain),
         decoration: InputDecoration(
-          prefixIcon: Icon(widget.icon, color: AppColors.primary.withValues(alpha: 0.7)),
+          prefixIcon: Icon(
+            widget.icon, 
+            color: AppColors.primary.withValues(alpha: 0.7)
+          ),
           suffixIcon: widget.isPassword
               ? IconButton(
                   icon: Icon(

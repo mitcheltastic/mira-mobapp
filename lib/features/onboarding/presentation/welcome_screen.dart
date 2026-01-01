@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-// --- IMPORTS ---
 import '../../../core/constant/app_colors.dart';
 import '../../auth/presentation/login_screen.dart';
 import '../../auth/presentation/register_screen.dart';
@@ -40,11 +39,11 @@ class _WelcomeScreenState extends State<WelcomeScreen>
 
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _controller,
-            curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic),
-          ),
-        );
+      CurvedAnimation(
+        parent: _controller,
+        curve: const Interval(0.3, 1.0, curve: Curves.easeOutCubic),
+      ),
+    );
 
     _scaleAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
@@ -88,7 +87,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
             child: Stack(
               fit: StackFit.expand,
               children: [
-
+                // Background Balls
                 _buildColoredBall(
                   top: 40,
                   right: -80,
@@ -116,6 +115,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   color: const Color(0xFFFCD34D),
                 ),
 
+                // Glass Card Area
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -127,18 +127,21 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       alignment: Alignment.bottomCenter,
                       children: [
                         Positioned.fill(
-                          child: CustomPaint(painter: CloudShadowPainter()),
+                          child: RepaintBoundary(
+                            child: CustomPaint(painter: CloudShadowPainter()),
+                          ),
                         ),
                         ClipPath(
                           clipper: OrganicCloudClipper(),
                           child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
                             child: Container(
                               decoration: BoxDecoration(
                                 color: Colors.white.withValues(alpha: 0.65),
                                 border: Border(
                                   top: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.4),
+                                    color:
+                                        Colors.white.withValues(alpha: 0.4),
                                     width: 1.5,
                                   ),
                                 ),
@@ -151,6 +154,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   ),
                 ),
 
+                // Content (Text & Buttons)
                 Positioned(
                   bottom: 0,
                   left: 0,
@@ -219,7 +223,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                                   backgroundColor: AppColors.primary,
                                   foregroundColor: Colors.white,
                                   elevation: 5,
-                                  shadowColor: _lightPurpleBtnColor.withValues(
+                                  shadowColor:
+                                      _lightPurpleBtnColor.withValues(
                                     alpha: 0.4,
                                   ),
                                   shape: RoundedRectangleBorder(
@@ -314,23 +319,25 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       bottom: bottom,
       child: ScaleTransition(
         scale: _scaleAnimation,
-        child: Container(
-          width: size,
-          height: size,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [softColor, coreColor],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: color.withValues(alpha: 0.3),
-                blurRadius: 30,
-                offset: const Offset(0, 10),
+        child: RepaintBoundary(
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [softColor, coreColor],
               ),
-            ],
+              boxShadow: [
+                BoxShadow(
+                  color: color.withValues(alpha: 0.3),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
           ),
         ),
       ),

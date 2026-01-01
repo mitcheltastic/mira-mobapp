@@ -9,7 +9,7 @@ import '../../../core/widgets/mira_button.dart';
 import '../../../core/widgets/mira_text_field.dart';
 import 'login_screen.dart';
 
-// Make sure this file actually exists in: lib/features/auth/data/auth_repository.dart
+// Make sure this file actually exists
 import '../presentation/otp_screen.dart';
 import '../data/auth_repository.dart';
 
@@ -62,8 +62,8 @@ class _RegisterScreenState extends State<RegisterScreen>
 
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
-          CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
-        );
+      CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
+    );
 
     _fadeAnimation = Tween<double>(
       begin: 0.0,
@@ -73,7 +73,6 @@ class _RegisterScreenState extends State<RegisterScreen>
     _formController.forward();
   }
 
-  // 3. SINGLE DISPOSE METHOD (Merged)
   @override
   void dispose() {
     _nameController.dispose();
@@ -85,12 +84,43 @@ class _RegisterScreenState extends State<RegisterScreen>
     super.dispose();
   }
 
+  // --- HELPER UNTUK SNACKBAR (Efisien & Konsisten) ---
+  void _showSnackBar(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle_outline,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
   Future<void> _handleRegister() async {
-    // 1. Basic Validation
+    // 1. Validasi Input Lebih Ketat (Efisien)
+    // Cek kosong dulu sebelum cek password match agar UX lebih baik
+    if (_nameController.text.isEmpty ||
+        _emailController.text.isEmpty ||
+        _passwordController.text.isEmpty ||
+        _confirmPasswordController.text.isEmpty) {
+      _showSnackBar("Please fill in all fields.");
+      return;
+    }
+
     if (_passwordController.text != _confirmPasswordController.text) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Passwords do not match!")));
+      _showSnackBar("Passwords do not match!");
       return;
     }
 
@@ -108,31 +138,22 @@ class _RegisterScreenState extends State<RegisterScreen>
 
       // 4. Handle Success
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Code sent! Check your email.")),
-        );
+        _showSnackBar("Code sent! Check your email.", isError: false);
 
-        // OLD: Navigator.pushReplacement(... LoginScreen ...)
-
-        // NEW: Navigate to OTP Screen
+        // Navigate to OTP Screen
         Navigator.push(
-          // Use push so they can go back if email was wrong
           context,
           MaterialPageRoute(
             builder: (context) => OtpScreen(
-              email: _emailController.text.trim(), // Pass the email!
+              email: _emailController.text.trim(),
             ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error: ${e.toString()}"),
-            backgroundColor: Colors.red,
-          ),
-        );
+        // Tampilkan pesan error yang lebih bersih
+        _showSnackBar(e.toString().replaceAll("Exception: ", ""));
       }
     } finally {
       if (mounted) {
@@ -157,11 +178,15 @@ class _RegisterScreenState extends State<RegisterScreen>
       resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
-          _buildAnimatedBackground(size),
+          // OPTIMASI: Bungkus Background dengan RepaintBoundary
+          RepaintBoundary(
+            child: _buildAnimatedBackground(size),
+          ),
+
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                physics: const NeverScrollableScrollPhysics(),
+                physics: const ClampingScrollPhysics(), // Lebih ringan
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -173,9 +198,13 @@ class _RegisterScreenState extends State<RegisterScreen>
                         children: [
                           SizedBox(
                             height: 80,
-                            child: Lottie.asset(
-                              'assets/lottie/BookOpening.json',
-                              fit: BoxFit.contain,
+                            // OPTIMASI: Bungkus Lottie dengan RepaintBoundary
+                            child: RepaintBoundary(
+                              child: Lottie.asset(
+                                'assets/lottie/BookOpening.json',
+                                fit: BoxFit.contain,
+                                frameRate: FrameRate.max, // Smooth FPS
+                              ),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -202,7 +231,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
-                              color: AppColors.textMuted.withValues(alpha: 0.8),
+                              color:
+                                  AppColors.textMuted.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
@@ -229,7 +259,8 @@ class _RegisterScreenState extends State<RegisterScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary.withValues(alpha: 0.1),
+                                color: AppColors.primary
+                                    .withValues(alpha: 0.1),
                                 blurRadius: 40,
                                 offset: const Offset(0, 20),
                                 spreadRadius: -10,
@@ -250,11 +281,12 @@ class _RegisterScreenState extends State<RegisterScreen>
                               ),
                               const SizedBox(height: 20),
 
-                              // FIX: Removed 'const' keywords here because controllers are not constant
+                              // MODIFIKASI: Menambahkan TextInputAction agar user experience lebih smooth
                               MiraTextField(
                                 controller: _nameController,
                                 hintText: "Full Name",
                                 icon: Icons.person_outline_rounded,
+                                textInputAction: TextInputAction.next,
                               ),
                               const SizedBox(height: 12),
 
@@ -263,6 +295,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 hintText: "Email Address",
                                 icon: Icons.email_outlined,
                                 keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
                               ),
                               const SizedBox(height: 12),
 
@@ -271,6 +304,7 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 hintText: "Password",
                                 icon: Icons.lock_outline_rounded,
                                 isPassword: true,
+                                textInputAction: TextInputAction.next,
                               ),
                               const SizedBox(height: 12),
 
@@ -279,6 +313,9 @@ class _RegisterScreenState extends State<RegisterScreen>
                                 hintText: "Confirm Password",
                                 icon: Icons.lock_reset_rounded,
                                 isPassword: true,
+                                textInputAction: TextInputAction.done,
+                                // Trigger register saat enter ditekan di field terakhir
+                                onSubmitted: (_) => _handleRegister(),
                               ),
 
                               const SizedBox(height: 24),
@@ -354,7 +391,8 @@ class _RegisterScreenState extends State<RegisterScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 80, sigmaY: 80),
+              // OPTIMASI: Reduce blur 80 -> 40
+              imageFilter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
               child: Container(
                 width: 300,
                 height: 300,
@@ -372,7 +410,8 @@ class _RegisterScreenState extends State<RegisterScreen>
           child: ScaleTransition(
             scale: _bgScaleAnimation,
             child: ImageFiltered(
-              imageFilter: ImageFilter.blur(sigmaX: 90, sigmaY: 90),
+              // OPTIMASI: Reduce blur 90 -> 50
+              imageFilter: ImageFilter.blur(sigmaX: 50, sigmaY: 50),
               child: Container(
                 width: 250,
                 height: 250,
@@ -384,8 +423,9 @@ class _RegisterScreenState extends State<RegisterScreen>
             ),
           ),
         ),
+        // OPTIMASI: Reduce backdrop blur 30 -> 10
         BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
           child: Container(color: Colors.transparent),
         ),
       ],

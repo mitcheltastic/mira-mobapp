@@ -5,7 +5,7 @@ class ProfileMenuItem extends StatelessWidget {
   final String title;
   final IconData icon;
   final VoidCallback onTap;
-  final bool isDestructive; // Untuk tombol Log Out (warna merah)
+  final bool isDestructive;
 
   const ProfileMenuItem({
     super.key,
@@ -17,31 +17,57 @@ class ProfileMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListTile(
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
-      leading: Container(
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          color: isDestructive 
-              ? AppColors.error.withValues(alpha: 0.1) 
-              : AppColors.primary.withValues(alpha: 0.1),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(
-          icon,
-          size: 20,
-          color: isDestructive ? AppColors.error : AppColors.primary,
+    // Tentukan warna dasar agar kode UI lebih bersih
+    final Color baseColor = isDestructive ? AppColors.error : AppColors.primary;
+    final Color textColor = isDestructive ? AppColors.error : AppColors.textMain;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        splashColor: baseColor.withValues(alpha: 0.05),
+        highlightColor: baseColor.withValues(alpha: 0.02),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          child: Row(
+            children: [
+              // 1. Icon Container
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: baseColor.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  size: 20,
+                  color: baseColor,
+                ),
+              ),
+
+              const SizedBox(width: 16),
+
+              // 2. Title Text
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: textColor,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 24,
+                color: AppColors.textMuted.withValues(alpha: 0.4),
+              ),
+            ],
+          ),
         ),
       ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontWeight: FontWeight.w600,
-          color: isDestructive ? AppColors.error : AppColors.textMain,
-        ),
-      ),
-      trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textMuted),
     );
   }
 }
