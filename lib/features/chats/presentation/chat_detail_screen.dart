@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 import '../../../core/constant/app_colors.dart';
 import '../data/chat_user_model.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final ChatUser user;
-
   const ChatDetailScreen({super.key, required this.user});
 
   @override
@@ -12,20 +13,19 @@ class ChatDetailScreen extends StatefulWidget {
 }
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
+  final SupabaseClient _supabase = Supabase.instance.client;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  late String _roomId;
+  late String _myId;
   bool _isComposing = false;
 
-  final List<ChatMessage> _messages = [
-    ChatMessage(
-        text: "Oke siap, kabari aja ya.", isMe: false, time: "10:32"),
-    ChatMessage(
-        text: "Siap pak, nanti saya kirim PDF nya.", isMe: true, time: "10:31"),
-    ChatMessage(
-        text: "Revisi bab 3 tolong segera dikirim ya.",
-        isMe: false,
-        time: "10:30"),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _myId = _supabase.auth.currentUser!.id;
+    _roomId = widget.user.avatarUrl; // RECOVERY: Room ID is passed here
+  }
 
   @override
   void dispose() {
@@ -34,39 +34,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.dispose();
   }
 
-  void _handleSubmitted(String text) {
+  void _handleSubmitted(String text) async {
     if (text.trim().isEmpty) return;
-
+    final content = text.trim();
     _textController.clear();
-    setState(() {
-      _isComposing = false;
-      _messages.insert(
-        0,
-        ChatMessage(
-          text: text,
-          isMe: true,
-          time:
-              "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-        ),
-      );
-    });
+    setState(() => _isComposing = false);
 
-    Future.delayed(const Duration(seconds: 1), () {
+    try {
+      await _supabase.from('messages').insert({
+        'room_id': _roomId,
+        'sender_id': _myId,
+        'content': content,
+        'is_read': false,
+      });
+      await _supabase
+          .from('chat_rooms')
+          .update({'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', _roomId);
+    } catch (e) {
       if (mounted) {
-        setState(() {
-          _messages.insert(
-            0,
-            ChatMessage(
-              text:
-                  "Ini adalah balasan otomatis dari ${widget.user.name}. Pesan teks diterima! 👍",
-              isMe: false,
-              time:
-                  "${DateTime.now().hour}:${DateTime.now().minute.toString().padLeft(2, '0')}",
-            ),
-          );
-        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error sending: $e")));
       }
-    });
+    }
+  }
+
+  Stream<List<Map<String, dynamic>>> _getMessagesStream() {
+    return _supabase
+        .from('messages')
+        .stream(primaryKey: ['id'])
+        .eq('room_id', _roomId)
+        .order('created_at', ascending: false);
   }
 
   @override
@@ -77,18 +76,45 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       body: Column(
         children: [
           Expanded(
-            child: ListView.separated(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
-              reverse: true,
-              itemCount: _messages.length + 1,
-              separatorBuilder: (context, index) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                if (index == _messages.length) {
-                  return _buildDateSeparator("Today");
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _getMessagesStream(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
                 }
-                final message = _messages[index];
-                return _MessageBubble(message: message);
+                final messages = snapshot.data!;
+                return ListView.separated(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 20,
+                  ),
+                  reverse: true,
+                  itemCount: messages.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final msg = messages[index];
+                    final isMe = msg['sender_id'] == _myId;
+
+                    // (Keep your existing read status update logic here)
+                    if (!isMe && msg['is_read'] == false) {
+                      _supabase
+                          .from('messages')
+                          .update({'is_read': true})
+                          .eq('id', msg['id']);
+                    }
+
+                    return _MessageBubble(
+                      text: msg['content'],
+                      isMe: isMe,
+                      time: DateTime.parse(msg['created_at']).toLocal(),
+                      isRead:
+                          msg['is_read'] ??
+                          false, // <--- PASS THE VALUE FROM DB
+                    );
+                  },
+                );
               },
             ),
           ),
@@ -101,96 +127,52 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
       backgroundColor: Colors.white,
-      surfaceTintColor: Colors.white,
       elevation: 0,
-      shadowColor: Colors.black.withValues(alpha: 0.05),
-      titleSpacing: 0,
       leading: IconButton(
-        icon: const Icon(Icons.arrow_back_ios_new_rounded,
-            size: 20, color: AppColors.textMain),
+        icon: const Icon(
+          Icons.arrow_back_ios_new_rounded,
+          size: 20,
+          color: AppColors.textMain,
+        ),
         onPressed: () => Navigator.pop(context),
       ),
       title: Row(
         children: [
-          Hero(
-            tag: widget.user.name,
-            child: Container(
-              padding: const EdgeInsets.all(2),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-              ),
-              child: CircleAvatar(
-                radius: 20,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                child: Text(
-                  widget.user.name[0],
-                  style: const TextStyle(
-                    color: AppColors.primary,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+          CircleAvatar(
+            radius: 20,
+            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+            child: Text(
+              widget.user.name[0].toUpperCase(),
+              style: const TextStyle(
+                color: AppColors.primary,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
               ),
             ),
           ),
           const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.user.name,
-                  style: const TextStyle(
-                    color: AppColors.textMain,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w700,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                widget.user.name,
+                style: const TextStyle(
+                  color: AppColors.textMain,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
                 ),
-                Text(
-                  widget.user.isOnline ? "Online" : "Offline",
-                  style: TextStyle(
-                    color: widget.user.isOnline
-                        ? const Color(0xFF10B981)
-                        : AppColors.textMuted,
-                    fontSize: 12,
-                    fontWeight: widget.user.isOnline ? FontWeight.w600 : FontWeight.normal,
-                  ),
+              ),
+              const Text(
+                "Online",
+                style: TextStyle(
+                  color: Color(0xFF10B981),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
-      ),
-      actions: const [],
-      bottom: PreferredSize(
-        preferredSize: const Size.fromHeight(1),
-        child: Container(
-          color: AppColors.freeBorder.withValues(alpha: 0.5),
-          height: 1,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDateSeparator(String date) {
-    return Center(
-      child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 16),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-        decoration: BoxDecoration(
-          color: const Color(0xFFE2E8F0),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Text(
-          date,
-          style: TextStyle(
-            color: AppColors.textMuted.withValues(alpha: 0.8),
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
       ),
     );
   }
@@ -218,37 +200,34 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               decoration: BoxDecoration(
                 color: const Color(0xFFF1F5F9),
                 borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.transparent),
               ),
               child: TextField(
                 controller: _textController,
                 maxLines: null,
                 keyboardType: TextInputType.multiline,
                 style: const TextStyle(color: AppColors.textMain, fontSize: 15),
-                onChanged: (text) {
-                  setState(() {
-                    _isComposing = text.trim().isNotEmpty;
-                  });
-                },
+                onChanged: (text) =>
+                    setState(() => _isComposing = text.trim().isNotEmpty),
                 decoration: const InputDecoration(
                   hintText: "Type a message...",
-                  hintStyle: TextStyle(color: Colors.grey, fontSize: 15),
                   border: InputBorder.none,
                   contentPadding: EdgeInsets.symmetric(vertical: 12),
                 ),
               ),
             ),
           ),
-          
           const SizedBox(width: 12),
           GestureDetector(
-            onTap: () => _isComposing ? _handleSubmitted(_textController.text) : null,
+            onTap: () =>
+                _isComposing ? _handleSubmitted(_textController.text) : null,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               height: 45,
               width: 45,
               decoration: BoxDecoration(
-                color: _isComposing ? AppColors.primary : const Color(0xFFF1F5F9),
+                color: _isComposing
+                    ? AppColors.primary
+                    : const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -265,24 +244,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 }
 
 class _MessageBubble extends StatelessWidget {
-  final ChatMessage message;
+  final String text;
+  final bool isMe;
+  final DateTime time;
+  final bool isRead; // 1. Add this field
 
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.text,
+    required this.isMe,
+    required this.time,
+    required this.isRead, // 2. Require it here
+  });
 
   @override
   Widget build(BuildContext context) {
-    final isMe = message.isMe;
-    
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: EdgeInsets.only(
-          left: isMe ? 64 : 0, 
-          right: isMe ? 0 : 64,
-        ),
+        margin: EdgeInsets.only(left: isMe ? 64 : 0, right: isMe ? 0 : 64),
         child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isMe
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           children: [
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -303,33 +286,34 @@ class _MessageBubble extends StatelessWidget {
                     ),
                 ],
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    message.text,
-                    style: TextStyle(
-                      color: isMe ? Colors.white : AppColors.textMain,
-                      fontSize: 15,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: isMe ? Colors.white : AppColors.textMain,
+                  fontSize: 15,
+                  height: 1.4,
+                ),
               ),
             ),
-            
+
             Padding(
               padding: const EdgeInsets.only(top: 4, left: 4, right: 4),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (isMe) ...[
-                    const Icon(Icons.done_all_rounded, 
-                      size: 14, color: Color(0xFF3B82F6)),
+                    // 3. DYNAMIC COLOR LOGIC HERE
+                    Icon(
+                      Icons.done_all_rounded,
+                      size: 16,
+                      color: isRead
+                          ? const Color(0xFF3B82F6) // Blue if read
+                          : Colors.grey.shade400, // Grey if unread
+                    ),
                     const SizedBox(width: 4),
                   ],
                   Text(
-                    message.time,
+                    DateFormat('HH:mm').format(time),
                     style: TextStyle(
                       color: AppColors.textMuted.withValues(alpha: 0.6),
                       fontSize: 10,
