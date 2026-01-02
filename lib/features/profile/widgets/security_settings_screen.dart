@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Add Supabase Import
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
 class SecuritySettingsScreen extends StatefulWidget {
@@ -21,6 +21,63 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   bool _obscureConfirm = true;
 
   bool _isLoading = false;
+  bool _isSocialLogin = false; // 1. Track if user is Google/Apple/etc
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginProvider();
+  }
+
+  // 2. CHECK PROVIDER LOGIC
+  void _checkLoginProvider() {
+    final user = Supabase.instance.client.auth.currentUser;
+    // 'provider' is usually inside app_metadata.
+    // If it's 'email', they have a password. If 'google', they don't.
+    final provider = user?.appMetadata['provider'] ?? 'email';
+
+    if (provider != 'email') {
+      setState(() {
+        _isSocialLogin = true;
+      });
+
+      // 3. SHOW POP-UP NOTIFICATION
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSocialLoginDialog(provider);
+      });
+    }
+  }
+
+  void _showSocialLoginDialog(String provider) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Force them to acknowledge
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text("Action Not Available"),
+          content: Text(
+            "You are logged in via ${provider[0].toUpperCase()}${provider.substring(1)}. \n\nYou cannot change your password here because your account is managed by your social provider.",
+            style: const TextStyle(color: AppColors.textMuted, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                // Optional: Navigator.pop(context); // Go back to previous screen?
+              },
+              child: const Text(
+                "Understood",
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -30,9 +87,10 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     super.dispose();
   }
 
-  // --- LOGIC GANTI PASSWORD (UPDATED) ---
   Future<void> _changePassword() async {
-    // 1. Validasi Input Kosong
+    // Safety check
+    if (_isSocialLogin) return;
+
     if (_currentPassController.text.isEmpty ||
         _newPassController.text.isEmpty ||
         _confirmPassController.text.isEmpty) {
@@ -40,13 +98,11 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       return;
     }
 
-    // 2. Validasi Match
     if (_newPassController.text != _confirmPassController.text) {
       _showSnackBar("New passwords do not match.", isError: true);
       return;
     }
 
-    // 3. Validasi Panjang
     if (_newPassController.text.length < 6) {
       _showSnackBar("Password must be at least 6 characters.", isError: true);
       return;
@@ -61,37 +117,25 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         return;
       }
 
-      // 4. VERIFY CURRENT PASSWORD (Re-authentication)
-      // We try to sign in with the "Current Password". If this fails,
-      // it means they typed the wrong password.
       await Supabase.instance.client.auth.signInWithPassword(
         email: user.email!,
         password: _currentPassController.text,
       );
 
-      // 5. UPDATE TO NEW PASSWORD
-      // If we reached here, the current password was correct.
       await Supabase.instance.client.auth.updateUser(
         UserAttributes(password: _newPassController.text),
       );
 
       if (mounted) {
         _showSnackBar("Password changed successfully!", isError: false);
-
-        // Clear fields
         _currentPassController.clear();
         _newPassController.clear();
         _confirmPassController.clear();
-
         Navigator.pop(context);
       }
     } on AuthException catch (e) {
-      // Handle Supabase Specific Errors (e.g., Wrong Password)
       if (mounted) {
-        _showSnackBar(
-          e.message,
-          isError: true,
-        ); // Likely "Invalid login credentials"
+        _showSnackBar(e.message, isError: true);
       }
     } catch (e) {
       if (mounted) {
@@ -156,9 +200,11 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                "Your new password must be different from previously used passwords.",
-                style: TextStyle(
+              Text(
+                _isSocialLogin
+                    ? "This feature is unavailable because you are logged in via a social account."
+                    : "Your new password must be different from previously used passwords.",
+                style: const TextStyle(
                   fontSize: 14,
                   color: AppColors.textMuted,
                   height: 1.5,
@@ -178,45 +224,47 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // CURRENT PASSWORD
-                    _BuildPasswordField(
-                      label: "Current Password",
-                      controller: _currentPassController,
-                      obscureText: _obscureCurrent,
-                      onToggleVisibility: () =>
-                          setState(() => _obscureCurrent = !_obscureCurrent),
-                    ),
-                    const SizedBox(height: 10),
-                    const Divider(color: Color(0xFFF1F5F9)),
-                    const SizedBox(height: 20),
-
-                    // NEW PASSWORD
-                    _BuildPasswordField(
-                      label: "New Password",
-                      controller: _newPassController,
-                      obscureText: _obscureNew,
-                      onToggleVisibility: () =>
-                          setState(() => _obscureNew = !_obscureNew),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // REQUIREMENTS
-                    _buildRequirementItem("Must be at least 6 characters"),
-                    _buildRequirementItem("Must contain one special character"),
-
-                    const SizedBox(height: 20),
-
-                    // CONFIRM PASSWORD
-                    _BuildPasswordField(
-                      label: "Confirm Password",
-                      controller: _confirmPassController,
-                      obscureText: _obscureConfirm,
-                      onToggleVisibility: () =>
-                          setState(() => _obscureConfirm = !_obscureConfirm),
-                    ),
-                  ],
+                child: Opacity(
+                  opacity: _isSocialLogin
+                      ? 0.5
+                      : 1.0, // Dim the form if disabled
+                  child: Column(
+                    children: [
+                      _BuildPasswordField(
+                        label: "Current Password",
+                        controller: _currentPassController,
+                        obscureText: _obscureCurrent,
+                        enabled: !_isSocialLogin, // 4. Disable input
+                        onToggleVisibility: () =>
+                            setState(() => _obscureCurrent = !_obscureCurrent),
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(color: Color(0xFFF1F5F9)),
+                      const SizedBox(height: 20),
+                      _BuildPasswordField(
+                        label: "New Password",
+                        controller: _newPassController,
+                        obscureText: _obscureNew,
+                        enabled: !_isSocialLogin, // 4. Disable input
+                        onToggleVisibility: () =>
+                            setState(() => _obscureNew = !_obscureNew),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildRequirementItem("Must be at least 6 characters"),
+                      _buildRequirementItem(
+                        "Must contain one special character",
+                      ),
+                      const SizedBox(height: 20),
+                      _BuildPasswordField(
+                        label: "Confirm Password",
+                        controller: _confirmPassController,
+                        obscureText: _obscureConfirm,
+                        enabled: !_isSocialLogin, // 4. Disable input
+                        onToggleVisibility: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(height: 40),
@@ -245,9 +293,11 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _changePassword,
+            // 5. Disable Button Logic
+            onPressed: (_isLoading || _isSocialLogin) ? null : _changePassword,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
+              // If disabled, color handles itself, but we can tweak if needed
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -263,9 +313,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                       strokeWidth: 2.5,
                     ),
                   )
-                : const Text(
-                    "Change Password",
-                    style: TextStyle(
+                : Text(
+                    _isSocialLogin ? "Managed by Google" : "Change Password",
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -286,8 +336,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           Container(
             height: 6,
             width: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.success,
+            decoration: BoxDecoration(
+              color: _isSocialLogin ? Colors.grey : AppColors.success,
               shape: BoxShape.circle,
             ),
           ),
@@ -313,12 +363,14 @@ class _BuildPasswordField extends StatelessWidget {
   final TextEditingController controller;
   final bool obscureText;
   final VoidCallback onToggleVisibility;
+  final bool enabled; // 6. Add enabled field
 
   const _BuildPasswordField({
     required this.label,
     required this.controller,
     required this.obscureText,
     required this.onToggleVisibility,
+    this.enabled = true, // Default to true
   });
 
   @override
@@ -338,6 +390,7 @@ class _BuildPasswordField extends StatelessWidget {
         TextField(
           controller: controller,
           obscureText: obscureText,
+          enabled: enabled, // 7. Pass to TextField
           style: const TextStyle(
             color: AppColors.textMain,
             fontWeight: FontWeight.w600,
@@ -345,7 +398,9 @@ class _BuildPasswordField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             filled: true,
-            fillColor: Colors.white,
+            fillColor: enabled
+                ? Colors.white
+                : const Color(0xFFF1F5F9), // Grey out if disabled
             prefixIcon: const Icon(
               Icons.lock_outline_rounded,
               color: Color(0xFF94A3B8),
@@ -359,13 +414,18 @@ class _BuildPasswordField extends StatelessWidget {
                 color: const Color(0xFF94A3B8),
                 size: 22,
               ),
-              onPressed: onToggleVisibility,
+              onPressed: enabled ? onToggleVisibility : null,
             ),
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
               horizontal: 20,
             ),
             enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+            ),
+            disabledBorder: OutlineInputBorder(
+              // Style for disabled state
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
             ),

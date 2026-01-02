@@ -21,6 +21,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
   bool _isBiometricEnabled = false;
   bool _isLoading = true;
   bool _canCheckBiometrics = false;
+  bool _isSocialLogin = false; // New flag to track login type
   String? _currentUserEmail;
 
   @override
@@ -39,9 +40,16 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
         return;
       }
 
+      // 1. Detect if user is using Google/Social login
+      // 'email' provider usually means password-based. 'google' is social.
+      final String provider = user?.appMetadata['provider'] ?? 'email';
+      _isSocialLogin = provider != 'email';
+
       final canCheck = await auth.canCheckBiometrics;
       final isDeviceSupported = await auth.isDeviceSupported();
-      final storedValue = await _storage.read(key: 'bio_enabled_$_currentUserEmail');
+      final storedValue = await _storage.read(
+        key: 'bio_enabled_$_currentUserEmail',
+      );
 
       if (mounted) {
         setState(() {
@@ -82,7 +90,9 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
           _isLoading = false;
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Biometric login disabled for this account")),
+          const SnackBar(
+            content: Text("Biometric login disabled for this account"),
+          ),
         );
       }
     } catch (e) {
@@ -105,48 +115,62 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
           builder: (context, setStateDialog) {
             return AlertDialog(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20)),
+                borderRadius: BorderRadius.circular(20),
+              ),
               title: const Text("Setup Biometrics"),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    "To enable biometric login for $_currentUserEmail, please enter your password to save it securely.",
-                    style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+                    _isSocialLogin
+                        ? "Enable biometric login for $_currentUserEmail? This will allow you to sign in faster next time."
+                        : "To enable biometric login for $_currentUserEmail, please enter your password to save it securely.",
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                   const SizedBox(height: 20),
-                  MiraTextField(
-                    controller: passwordController,
-                    hintText: "Current Password",
-                    isPassword: true,
-                    icon: Icons.lock_outline,
-                  ),
+                  if (!_isSocialLogin)
+                    MiraTextField(
+                      controller: passwordController,
+                      hintText: "Current Password",
+                      isPassword: true,
+                      icon: Icons.lock_outline,
+                    ),
                 ],
               ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+                  child: const Text(
+                    "Cancel",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
+                    foregroundColor:
+                        Colors.white, // <--- ADD THIS LINE (Fixes the color)
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
                   ),
                   onPressed: isDialogLoading
                       ? null
                       : () async {
                           final password = passwordController.text.trim();
-                          if (password.isEmpty) return;
+                          if (!_isSocialLogin && password.isEmpty) return;
 
                           setStateDialog(() => isDialogLoading = true);
 
                           try {
                             bool authenticated = await auth.authenticate(
                               localizedReason: 'Scan to enable biometrics',
-                              options:
-                                  const AuthenticationOptions(stickyAuth: true),
+                              options: const AuthenticationOptions(
+                                stickyAuth: true,
+                              ),
                             );
 
                             if (!authenticated) {
@@ -155,12 +179,25 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                             }
 
                             await _storage.write(
-                                key: 'bio_enabled_$_currentUserEmail', value: 'true');
+                              key: 'bio_enabled_$_currentUserEmail',
+                              value: 'true',
+                            );
+
+                            if (!_isSocialLogin) {
+                              await _storage.write(
+                                key: 'bio_pass_$_currentUserEmail',
+                                value: password,
+                              );
+                            }
+
+                            await _storage.delete(
+                              key: 'bio_ignored_$_currentUserEmail',
+                            );
                             await _storage.write(
-                                key: 'bio_pass_$_currentUserEmail', value: password);
-                            await _storage.delete(key: 'bio_ignored_$_currentUserEmail');
-                            await _storage.write(
-                                key: 'last_bio_user', value: _currentUserEmail);
+                              key: 'last_bio_user',
+                              value: _currentUserEmail,
+                            );
+
                             if (mounted) {
                               setState(() => _isBiometricEnabled = true);
                             }
@@ -168,8 +205,9 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content:
-                                      Text("Biometrics enabled successfully!"),
+                                  content: Text(
+                                    "Biometrics enabled successfully!",
+                                  ),
                                   backgroundColor: AppColors.success,
                                 ),
                               );
@@ -183,7 +221,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                             }
                           } finally {
                             if (context.mounted) {
-                               setStateDialog(() => isDialogLoading = false);
+                              setStateDialog(() => isDialogLoading = false);
                             }
                           }
                         },
@@ -192,7 +230,10 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                              color: Colors.white, strokeWidth: 2))
+                            color: Colors.white,
+                            strokeWidth: 2,
+                          ),
+                        )
                       : const Text("Enable & Save"),
                 ),
               ],
@@ -210,14 +251,18 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
       appBar: AppBar(
         title: const Text(
           "Biometric Settings",
-          style:
-              TextStyle(color: AppColors.textMain, fontWeight: FontWeight.w700),
+          style: TextStyle(
+            color: AppColors.textMain,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: AppColors.textMain),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.textMain,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -253,11 +298,13 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                                     : Colors.grey.withValues(alpha: 0.1),
                                 shape: BoxShape.circle,
                               ),
-                              child: Icon(Icons.fingerprint_rounded,
-                                  size: 28,
-                                  color: _canCheckBiometrics
-                                      ? AppColors.primary
-                                      : Colors.grey),
+                              child: Icon(
+                                Icons.fingerprint_rounded,
+                                size: 28,
+                                color: _canCheckBiometrics
+                                    ? AppColors.primary
+                                    : Colors.grey,
+                              ),
                             ),
                             const SizedBox(width: 16),
                             Expanded(
@@ -279,8 +326,9 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                                         : "Biometrics not available.",
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: AppColors.textMuted
-                                          .withValues(alpha: 0.8),
+                                      color: AppColors.textMuted.withValues(
+                                        alpha: 0.8,
+                                      ),
                                     ),
                                   ),
                                 ],
@@ -297,9 +345,10 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                       ],
                     ),
                   ),
-                  
                   const SizedBox(height: 24),
-                  if (_isBiometricEnabled) ...[
+
+                  // 4. Hide "Update Password" button for social users
+                  if (_isBiometricEnabled && !_isSocialLogin) ...[
                     const Text(
                       "Changed your password?",
                       style: TextStyle(
@@ -331,12 +380,13 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                         ),
                       ),
                     ),
-                    
                     const SizedBox(height: 8),
                     const Text(
                       "If you changed your account password recently, please update it here so biometric login continues to work.",
-                      style:
-                          TextStyle(fontSize: 12, color: AppColors.textMuted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                   ],
                 ],
