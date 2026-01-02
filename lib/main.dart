@@ -9,8 +9,13 @@ import 'features/onboarding/presentation/splash_screen.dart';
 // 1. ADD THIS IMPORT (Make sure the path matches your project structure)
 import 'features/dashboard/presentation/main_navigation_screen.dart';
 
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import this
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // 1. ADD THIS LINE to actually load the .env file
+  await dotenv.load(fileName: ".env");
 
   await Supabase.initialize(
     url: AppSecrets.supabaseUrl,

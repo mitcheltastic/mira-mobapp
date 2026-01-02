@@ -1,7 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
 import '../../dashboard/widgets/dashboard_header.dart';
@@ -31,15 +31,18 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
 
-  // State UI
+  // --- STATE UI ---
   bool _isSearching = false;
   late AnimationController _bgController;
   late Animation<double> _bgAnimation;
 
-  // State Data
+  // --- STATE DATA (Dynamic) ---
   String _userName = "Friend";
+  String? _avatarUrl;
+  String _levelStatus = "Reguler"; // Default status
+  bool _isPro = false; // Derived from levelStatus
 
-  // --- GLOBAL SEARCH MASTER DATA ---
+  // --- MASTER DATA ---
   final List<Map<String, dynamic>> _masterSearchData = [
     {
       "title": "Pomodoro Timer",
@@ -120,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _getUserProfile();
+    _fetchUserData(); // Updated function name
     _searchController.addListener(_onSearchChanged);
 
     _bgController = AnimationController(
@@ -134,30 +137,55 @@ class _HomeScreenState extends State<HomeScreen>
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
   }
 
-  // --- FUNGSI SUPABASE ---
-  Future<void> _getUserProfile() async {
+  // --- FUNGSI FETCH DATA (Parallel Fetch) ---
+  Future<void> _fetchUserData() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
-        final data = await Supabase.instance.client
-            .from('profiles')
-            .select('full_name')
-            .eq('id', user.id)
-            .single();
+        // Run both queries in parallel for speed
+        final results = await Future.wait([
+          // 0: Profile Data
+          Supabase.instance.client
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', user.id)
+              .single(),
+          // 1: Level Data
+          Supabase.instance.client
+              .from('level')
+              .select('status')
+              .eq('id', user.id)
+              .maybeSingle(),
+        ]);
+
+        final profileData = results[0] as Map<String, dynamic>;
+        final levelData = results[1];
 
         if (mounted) {
           setState(() {
-            String fullName = data['full_name'] ?? "Friend";
+            // 1. Set Name
+            String fullName = profileData['full_name'] ?? "Friend";
             _userName = fullName.split(' ')[0];
+
+            // 2. Set Avatar
+            _avatarUrl = profileData['avatar_url'];
+
+            // 3. Set Status & Pro Flag
+            if (levelData != null && levelData['status'] != null) {
+              _levelStatus = levelData['status'];
+              // Check if status contains "Premium"
+              _isPro =
+                  _levelStatus == 'Monthly Premium' ||
+                  _levelStatus == 'Yearly Premium';
+            }
           });
         }
       }
     } catch (e) {
-      debugPrint("Error fetching profile: $e");
+      debugPrint("Error fetching home data: $e");
     }
   }
 
-  // --- FUNGSI SEARCH ---
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -211,7 +239,6 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           RepaintBoundary(child: _buildBackgroundDecoration()),
 
-          // Content Layer
           SafeArea(
             bottom: false,
             child: Column(
@@ -222,16 +249,17 @@ class _HomeScreenState extends State<HomeScreen>
                       ? const SizedBox(height: 10)
                       : Column(
                           children: [
+                            // --- UPDATED HEADER CALL ---
                             DashboardHeader(
                               userName: _userName,
-                              isPro: true,
+                              isPro: _isPro,
+                              avatarUrl: _avatarUrl, // Pass URL from DB
                             ),
                             const SizedBox(height: 8),
                           ],
                         ),
                 ),
 
-                // Search Bar
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 24),
                   child: _buildFunctionalSearchBar(),
@@ -269,11 +297,8 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(height: 18),
-
           const FocusSection(),
-
           const SizedBox(height: 36),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: _buildSectionTitle(
@@ -298,7 +323,7 @@ class _HomeScreenState extends State<HomeScreen>
           children: [
             Icon(
               Icons.manage_search_rounded,
-              size: 80, // MODIFIKASI: Icon lebih besar
+              size: 80,
               color: AppColors.primary.withValues(alpha: 0.2),
             ),
             const SizedBox(height: 16),
@@ -354,10 +379,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             subtitle: Text(
               item['desc'],
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
             trailing: const Icon(
               Icons.arrow_forward_ios_rounded,
@@ -527,10 +549,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       ),
     );
   }

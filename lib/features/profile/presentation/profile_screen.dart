@@ -3,13 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../widgets/biometric_settings_screen.dart';
 
+// Widgets
+import '../widgets/biometric_settings_screen.dart';
 import '../../../core/constant/app_colors.dart';
 import '../../onboarding/presentation/welcome_screen.dart';
 import '../../auth/data/auth_repository.dart';
-
-// Import Sub-screens
 import '../widgets/account_settings_screen.dart';
 import '../widgets/subscription_screen.dart';
 import '../widgets/help_support_screen.dart';
@@ -24,17 +23,18 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   // --- STATE VARIABLES ---
-  final bool isPro = true;
   File? _selectedImage;
+  String? _avatarUrl;
+  bool _isUploading = false;
 
   // Data User
   String _fullName = "Loading...";
   String _email = "Loading...";
+  String _subscriptionStatus = "Reguler"; // Default to Reguler
 
   @override
   void initState() {
     super.initState();
-    // Animasi manual DIHAPUS agar transisi "Normal" dan Ringan
     _getProfileData();
   }
 
@@ -45,14 +45,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (user != null) {
         setState(() => _email = user.email ?? "No Email");
 
-        final data = await Supabase.instance.client
+        // 1. Fetch Profile Data (Name, Avatar)
+        final profileData = await Supabase.instance.client
             .from('profiles')
-            .select('full_name')
+            .select('full_name, avatar_url')
             .eq('id', user.id)
             .single();
 
+        // 2. Fetch Subscription Status (Level)
+        final levelData = await Supabase.instance.client
+            .from('level')
+            .select('status')
+            .eq('id', user.id)
+            .maybeSingle();
+
         if (mounted) {
-          setState(() => _fullName = data['full_name'] ?? "User");
+          setState(() {
+            _fullName = profileData['full_name'] ?? "User";
+            _avatarUrl = profileData['avatar_url'];
+
+            // Update Status ('Reguler', 'Monthly Premium', etc.)
+            if (levelData != null && levelData['status'] != null) {
+              _subscriptionStatus = levelData['status'];
+            }
+          });
         }
       }
     } catch (e) {
@@ -61,33 +77,91 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // --- FUNGSI GAMBAR ---
+  // --- FUNGSI UPLOAD GAMBAR ---
+  Future<void> _uploadAvatar(File imageFile) async {
+    setState(() => _isUploading = true);
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final fileExtension = imageFile.path.split('.').last;
+      final fileName =
+          '${user.id}/avatar_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+
+      await Supabase.instance.client.storage
+          .from('avatars')
+          .upload(
+            fileName,
+            imageFile,
+            fileOptions: const FileOptions(upsert: true),
+          );
+
+      final imageUrl = Supabase.instance.client.storage
+          .from('avatars')
+          .getPublicUrl(fileName);
+
+      await Supabase.instance.client
+          .from('profiles')
+          .update({
+            'avatar_url': imageUrl,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', user.id);
+
+      if (mounted) {
+        setState(() {
+          _avatarUrl = imageUrl;
+          _isUploading = false;
+        });
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Profile photo updated successfully!"),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Upload error: $e");
+      if (mounted) {
+        setState(() => _isUploading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Upload failed: $e"),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _pickImage() async {
     final ImagePicker picker = ImagePicker();
     try {
       final XFile? image = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 50,
+        maxWidth: 500,
       );
 
       if (image != null) {
         setState(() => _selectedImage = File(image.path));
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text("Profile updated!"),
-              backgroundColor: AppColors.success,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          );
-        }
+        await _uploadAvatar(File(image.path));
       }
     } catch (e) {
       debugPrint("Error picking image: $e");
     }
+  }
+
+  // --- REFRESH LOGIC (When coming back from Subscription Screen) ---
+  Future<void> _navigateToSubscription() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (c) => const SubscriptionScreen()),
+    );
+    // Refresh data when returning to check if they upgraded
+    _getProfileData();
   }
 
   @override
@@ -95,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA), // Background bersih
+      backgroundColor: const Color(0xFFFAFAFA),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -115,18 +189,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Column(
           children: [
             const SizedBox(height: 10),
-
-            // --- 1. HEADER PROFILE ---
             _buildProfileHeader(),
-
             const SizedBox(height: 30),
 
-            // --- 2. SUBSCRIPTION CARD ---
+            // --- DYNAMIC SUBSCRIPTION CARD ---
             _buildSubscriptionCard(),
 
             const SizedBox(height: 30),
-
-            // --- 3. MENU LIST ---
             _buildSectionHeader("GENERAL"),
             _buildMenuCard(
               children: [
@@ -139,11 +208,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     MaterialPageRoute(
                       builder: (c) => const AccountSettingsScreen(),
                     ),
-                  ),
+                  ).then((_) => _getProfileData()), // Refresh name changes
                 ),
                 _buildMenuItem(
                   title: "Biometric Settings",
-                  icon: Icons.fingerprint_rounded, // Icon sidik jari
+                  icon: Icons.fingerprint_rounded,
                   color: Colors.green,
                   onTap: () => Navigator.push(
                     context,
@@ -152,7 +221,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
                 ),
-                _buildDivider(),
                 _buildDivider(),
                 _buildMenuItem(
                   title: "Security & Password",
@@ -174,9 +242,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 24),
-
             _buildSectionHeader("PREFERENCES"),
             _buildMenuCard(
               children: [
@@ -201,10 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ],
             ),
-
             const SizedBox(height: 24),
-
-            // --- 4. LOGOUT ---
             _buildMenuCard(
               children: [
                 _buildMenuItem(
@@ -223,9 +286,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- WIDGET BUILDERS (Dipecah agar kode bersih) ---
+  // --- WIDGET BUILDERS ---
 
   Widget _buildProfileHeader() {
+    ImageProvider imageProvider;
+    if (_selectedImage != null) {
+      imageProvider = FileImage(_selectedImage!);
+    } else if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
+      imageProvider = NetworkImage(_avatarUrl!);
+    } else {
+      imageProvider = const NetworkImage(
+        'https://ui-avatars.com/api/?name=User&background=random',
+      );
+    }
+
     return Column(
       children: [
         Stack(
@@ -246,14 +320,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ],
               ),
-              child: CircleAvatar(
-                radius: 50,
-                backgroundColor: Colors.grey[100],
-                backgroundImage: _selectedImage != null
-                    ? FileImage(_selectedImage!) as ImageProvider
-                    : const NetworkImage(
-                        'https://ui-avatars.com/api/?name=User&background=random',
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  CircleAvatar(
+                    radius: 50,
+                    backgroundColor: Colors.grey[100],
+                    backgroundImage: imageProvider,
+                  ),
+                  if (_isUploading)
+                    const Center(
+                      child: CircularProgressIndicator(
+                        color: AppColors.primary,
+                        strokeWidth: 3,
                       ),
+                    ),
+                ],
               ),
             ),
             GestureDetector(
@@ -312,23 +394,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSubscriptionCard() {
+    // Logic to determine UI based on Real Data
+    final bool isPro =
+        _subscriptionStatus == 'Monthly Premium' ||
+        _subscriptionStatus == 'Yearly Premium';
+
     return GestureDetector(
-      onTap: () => Navigator.push(
-        context,
-        MaterialPageRoute(builder: (c) => const SubscriptionScreen()),
-      ),
+      onTap: _navigateToSubscription,
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
+          // Conditional Gradient
           gradient: isPro
               ? const LinearGradient(
-                  colors: [Color(0xFF10B981), Color(0xFF059669)],
+                  colors: [Color(0xFF10B981), Color(0xFF059669)], // Green (Pro)
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                 )
               : const LinearGradient(
-                  colors: [Color(0xFF334155), Color(0xFF1E293B)],
+                  colors: [
+                    Color(0xFF334155),
+                    Color(0xFF1E293B),
+                  ], // Grey (Reguler)
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
@@ -350,7 +440,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 borderRadius: BorderRadius.circular(14),
               ),
               child: Icon(
-                isPro ? Icons.verified_user_rounded : Icons.diamond_outlined,
+                isPro ? Icons.verified_user_rounded : Icons.star_border_rounded,
                 color: Colors.white,
                 size: 24,
               ),
@@ -361,7 +451,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    isPro ? "Pro Active" : "Upgrade to Pro",
+                    isPro ? "Pro Active" : "Free Plan",
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -370,7 +460,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    isPro ? "Unlimited Access" : "Unlock all features",
+                    isPro
+                        ? "Access to all features"
+                        : "Upgrade to unlock full access",
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 12,

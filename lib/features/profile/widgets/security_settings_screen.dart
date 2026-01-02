@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Add Supabase Import
 import '../../../core/constant/app_colors.dart';
 
 class SecuritySettingsScreen extends StatefulWidget {
@@ -29,7 +30,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     super.dispose();
   }
 
-  // --- LOGIC GANTI PASSWORD ---
+  // --- LOGIC GANTI PASSWORD (UPDATED) ---
   Future<void> _changePassword() async {
     // 1. Validasi Input Kosong
     if (_currentPassController.text.isEmpty ||
@@ -45,26 +46,59 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       return;
     }
 
-    // 3. Validasi Panjang (Contoh)
-    if (_newPassController.text.length < 8) {
-      _showSnackBar("Password must be at least 8 characters.", isError: true);
+    // 3. Validasi Panjang
+    if (_newPassController.text.length < 6) {
+      _showSnackBar("Password must be at least 6 characters.", isError: true);
       return;
     }
 
-    // 4. Proses Simpan
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2)); // Simulasi API
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      _showSnackBar("Password changed successfully!", isError: false);
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null || user.email == null) {
+        _showSnackBar("User not found. Please login again.", isError: true);
+        return;
+      }
 
-      // Opsional: Clear field setelah sukses
-      _currentPassController.clear();
-      _newPassController.clear();
-      _confirmPassController.clear();
+      // 4. VERIFY CURRENT PASSWORD (Re-authentication)
+      // We try to sign in with the "Current Password". If this fails,
+      // it means they typed the wrong password.
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: user.email!,
+        password: _currentPassController.text,
+      );
 
-      Navigator.pop(context);
+      // 5. UPDATE TO NEW PASSWORD
+      // If we reached here, the current password was correct.
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(password: _newPassController.text),
+      );
+
+      if (mounted) {
+        _showSnackBar("Password changed successfully!", isError: false);
+
+        // Clear fields
+        _currentPassController.clear();
+        _newPassController.clear();
+        _confirmPassController.clear();
+
+        Navigator.pop(context);
+      }
+    } on AuthException catch (e) {
+      // Handle Supabase Specific Errors (e.g., Wrong Password)
+      if (mounted) {
+        _showSnackBar(
+          e.message,
+          isError: true,
+        ); // Likely "Invalid login credentials"
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar("An error occurred: $e", isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -84,27 +118,29 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC), // Background bersih
+        backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: AppColors.textMain, size: 20),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppColors.textMain,
+              size: 20,
+            ),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
           title: const Text(
             "Security",
             style: TextStyle(
-                color: AppColors.textMain,
-                fontWeight: FontWeight.w800,
-                fontSize: 18),
+              color: AppColors.textMain,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
           ),
         ),
-        // Bottom Bar untuk Tombol Save (Agar selalu terlihat)
         bottomNavigationBar: _buildBottomBar(),
-
         body: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           physics: const BouncingScrollPhysics(),
@@ -114,19 +150,21 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
               const Text(
                 "Change Password",
                 style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textMain),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMain,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 "Your new password must be different from previously used passwords.",
                 style: TextStyle(
-                    fontSize: 14, color: AppColors.textMuted, height: 1.5),
+                  fontSize: 14,
+                  color: AppColors.textMuted,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 24),
-
-              // --- FORM SECTION ---
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -150,7 +188,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                       onToggleVisibility: () =>
                           setState(() => _obscureCurrent = !_obscureCurrent),
                     ),
-
                     const SizedBox(height: 10),
                     const Divider(color: Color(0xFFF1F5F9)),
                     const SizedBox(height: 20),
@@ -165,10 +202,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // PASSWORD REQUIREMENTS
-                    _buildRequirementItem("Must be at least 8 characters"),
-                    _buildRequirementItem(
-                        "Must contain one special character"),
+                    // REQUIREMENTS
+                    _buildRequirementItem("Must be at least 6 characters"),
+                    _buildRequirementItem("Must contain one special character"),
 
                     const SizedBox(height: 20),
 
@@ -177,13 +213,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                       label: "Confirm Password",
                       controller: _confirmPassController,
                       obscureText: _obscureConfirm,
-                      onToggleVisibility: () => setState(
-                          () => _obscureConfirm = !_obscureConfirm),
+                      onToggleVisibility: () =>
+                          setState(() => _obscureConfirm = !_obscureConfirm),
                     ),
                   ],
                 ),
               ),
-              // Tambahan padding bawah agar tidak tertutup keyboard/bottom bar
               const SizedBox(height: 40),
             ],
           ),
@@ -191,8 +226,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       ),
     );
   }
-
-  // --- WIDGET BUILDERS ---
 
   Widget _buildBottomBar() {
     return Container(
@@ -218,7 +251,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              elevation: 0, // Flat design
+              elevation: 0,
               shadowColor: AppColors.primary.withValues(alpha: 0.4),
             ),
             child: _isLoading
@@ -254,7 +287,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
             height: 6,
             width: 6,
             decoration: const BoxDecoration(
-              color: AppColors.success, // Indikator hijau kecil
+              color: AppColors.success,
               shape: BoxShape.circle,
             ),
           ),
@@ -275,7 +308,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   }
 }
 
-// --- WIDGET HELPER PASSWORD FIELD (Optimized) ---
 class _BuildPasswordField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -314,8 +346,11 @@ class _BuildPasswordField extends StatelessWidget {
           decoration: InputDecoration(
             filled: true,
             fillColor: Colors.white,
-            prefixIcon: const Icon(Icons.lock_outline_rounded,
-                color: Color(0xFF94A3B8), size: 22),
+            prefixIcon: const Icon(
+              Icons.lock_outline_rounded,
+              color: Color(0xFF94A3B8),
+              size: 22,
+            ),
             suffixIcon: IconButton(
               icon: Icon(
                 obscureText
@@ -326,15 +361,13 @@ class _BuildPasswordField extends StatelessWidget {
               ),
               onPressed: onToggleVisibility,
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            // Border Logic
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(
-                color: const Color(0xFFE2E8F0), // Border abu muda
-                width: 1,
-              ),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
