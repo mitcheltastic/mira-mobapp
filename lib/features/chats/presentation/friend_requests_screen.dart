@@ -107,7 +107,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
             )
           : ListView.separated(
               itemCount: _requests.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final req = _requests[index];
                 final requester = req['profiles'];

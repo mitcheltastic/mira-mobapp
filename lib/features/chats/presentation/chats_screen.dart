@@ -69,7 +69,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
         ), // Added padding to clear Navbar
         child: FloatingActionButton(
           heroTag: "search_people_fab", // Unique tag to prevent hero errors
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.textMain,
           elevation: 4,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),

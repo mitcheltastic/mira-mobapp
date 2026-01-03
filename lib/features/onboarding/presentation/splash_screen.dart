@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,10 +21,11 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
 
+  int _sequenceStep = 0;
+
   @override
   void initState() {
     super.initState();
-    _lottieController = AnimationController(vsync: this);
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
@@ -33,27 +35,38 @@ class _SplashScreenState extends State<SplashScreen>
       begin: 1.0,
       end: 1.15,
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
-    
+    _lottieController = AnimationController(vsync: this);
+
     _lottieController.addStatusListener((status) {
       if (status == AnimationStatus.completed) {
-        Future.delayed(const Duration(milliseconds: 500), () {
-          if (mounted) {
-            _navigateToNextScreen();
-          }
-        });
+        _startCinematicSequence();
       }
     });
+  }
+
+  void _startCinematicSequence() async {
+    setState(() => _sequenceStep = 1);
+    await Future.delayed(const Duration(milliseconds: 2000));
+
+    if (!mounted) return;
+    setState(() => _sequenceStep = 2);
+    await Future.delayed(const Duration(milliseconds: 3500));
+
+    if (!mounted) return;
+    setState(() => _sequenceStep = 3);
+    await Future.delayed(const Duration(milliseconds: 2000));
+
+    if (!mounted) return;
+    _navigateToNextScreen();
   }
 
   Future<void> _navigateToNextScreen() async {
     final session = Supabase.instance.client.auth.currentSession;
 
     if (!mounted) return;
+    Widget nextScreen = const OnboardingScreen();
 
-    Widget nextScreen;
     if (session != null) {
-      nextScreen = const OnboardingScreen();
-    } else {
       nextScreen = const OnboardingScreen();
     }
 
@@ -61,7 +74,7 @@ class _SplashScreenState extends State<SplashScreen>
       context,
       PageRouteBuilder(
         pageBuilder: (context, animation, secondaryAnimation) => nextScreen,
-        transitionDuration: const Duration(milliseconds: 1000),
+        transitionDuration: const Duration(milliseconds: 1200),
         transitionsBuilder: (context, animation, secondaryAnimation, child) {
           return FadeTransition(opacity: animation, child: child);
         },
@@ -91,40 +104,25 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: const Color(0xFFF8FAFC),
       body: Stack(
         children: [
-          RepaintBoundary(
-            child: _buildAnimatedBackground(size),
-          ),
-
+          RepaintBoundary(child: _buildAnimatedBackground(size)),
           Center(
-            child: SizedBox(
-              width: size.width * 0.8,
-              child: RepaintBoundary(
-                child: Lottie.asset(
-                  'assets/lottie/magic.json',
-                  controller: _lottieController,
-                  fit: BoxFit.contain,
-                  frameRate: FrameRate.max,
-                  onLoaded: (composition) {
-                    _lottieController
-                      ..duration = composition.duration
-                      ..forward();
-                  },
-                  frameBuilder: (context, child, composition) {
-                    if (composition != null) {
-                      return child;
-                    } else {
-                      return const SizedBox();
-                    }
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.book_rounded,
-                      size: 100,
-                      color: AppColors.primary,
-                    );
-                  },
-                ),
-              ),
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 800),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(
+                    position: Tween<Offset>(
+                      begin: const Offset(0.0, 0.05),
+                      end: Offset.zero,
+                    ).animate(animation),
+                    child: child,
+                  ),
+                );
+              },
+              child: _buildCurrentStepContent(size),
             ),
           ),
         ],
@@ -132,10 +130,86 @@ class _SplashScreenState extends State<SplashScreen>
     );
   }
 
+  Widget _buildCurrentStepContent(Size size) {
+    switch (_sequenceStep) {
+      case 0:
+        return SizedBox(
+          key: const ValueKey('Lottie'),
+          width: size.width * 0.8,
+          child: Lottie.asset(
+            'assets/lottie/magic.json',
+            controller: _lottieController,
+            fit: BoxFit.contain,
+            frameRate: FrameRate.max,
+            onLoaded: (composition) {
+              _lottieController
+                ..duration = composition.duration
+                ..forward();
+            },
+            errorBuilder: (context, error, stack) => const SizedBox(),
+          ),
+        );
+
+      case 1:
+        return _buildElegantText("MEET OUR TEAM", key: 'text1');
+
+      case 2:
+        return Container(
+          key: const ValueKey('TeamPhoto'),
+          width: size.width,
+          height: size.height,
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 40),
+          child: Center(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Image.asset(
+                'assets/images/Splash_screen.png',
+                fit: BoxFit.contain,
+                cacheHeight:
+                    (size.height * MediaQuery.of(context).devicePixelRatio)
+                        .toInt(),
+              ),
+            ),
+          ),
+        );
+
+      case 3:
+        return _buildElegantText("PRESENTS", key: 'text2');
+
+      default:
+        return const SizedBox();
+    }
+  }
+
+  Widget _buildElegantText(String text, {required String key}) {
+    return Column(
+      key: ValueKey(key),
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          text,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontFamily: 'Roboto',
+            fontSize: 24,
+            fontWeight: FontWeight.w300,
+            letterSpacing: 8.0,
+            color: Color(0xFF1E293B),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          width: 40,
+          height: 1,
+          color: AppColors.primary.withValues(alpha: 0.5),
+        ),
+      ],
+    );
+  }
+
   Widget _buildAnimatedBackground(Size size) {
     return Stack(
       children: [
-        // Orb 1 (Atas Kanan)
         Positioned(
           top: -80,
           right: -50,
@@ -154,7 +228,6 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         ),
-
         Positioned(
           top: size.height * 0.3,
           left: -80,
@@ -173,7 +246,6 @@ class _SplashScreenState extends State<SplashScreen>
             ),
           ),
         ),
-
         Positioned(
           bottom: -50,
           right: -20,

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../core/constant/app_colors.dart';
+import '../../../core/constant/app_colors.dart'; 
 
 class AccountSettingsScreen extends StatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -21,21 +21,27 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   String? _selectedGender;
   String? _selectedOccupation;
 
+  // --- STATE VARIABLES ---
   bool _isLoading = false;
   bool _isFetching = true;
-  final bool _isPro = true;
+  
+  // Status Subscription & Identity
+  bool _isPro = false; 
+  String _subscriptionStatus = "Regular";
+  
+  String _fullName = "User"; 
+  String? _avatarUrl; 
 
-  // --- AVATAR STATE ---
-  String? _avatarUrl;
-
-  // --- DATA LISTS ---
-  final List<String> _genders = ['Male', 'Female'];
+  // --- DATA OPTIONS ---
+  final List<String> _genders = ['Male', 'Female', 'Prefer not to say'];
   final List<String> _occupations = [
     'Elementary Student',
     'Middle School Student',
     'High School Student',
     'College Student',
     'Employee',
+    'Educator',
+    'Freelancer',
     'Other',
   ];
 
@@ -47,7 +53,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     _ageController = TextEditingController();
     _locationController = TextEditingController();
     _institutionController = TextEditingController();
-
+    
     _getProfileData();
   }
 
@@ -61,7 +67,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     super.dispose();
   }
 
-  // --- 1. FETCH DATA ---
+  // --- FETCH DATA (PROFILE & SUBSCRIPTION) ---
   Future<void> _getProfileData() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -69,50 +75,81 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
       _emailController.text = user.email ?? "";
 
-      // We use .maybeSingle() instead of .single() to prevent crashes if row is missing
-      final data = await Supabase.instance.client
+      // 1. Fetch Profile Data
+      final profileResponse = await Supabase.instance.client
           .from('profiles')
           .select()
           .eq('id', user.id)
           .maybeSingle();
 
+      // 2. Fetch Subscription Status from 'level' table
+      final levelResponse = await Supabase.instance.client
+          .from('level')
+          .select('status')
+          .eq('id', user.id)
+          .maybeSingle();
+
       if (mounted) {
         setState(() {
-          if (data != null) {
-            _nicknameController.text = data['nickname'] ?? '';
-            _ageController.text = data['age']?.toString() ?? '';
-            _locationController.text = data['location'] ?? '';
-            _institutionController.text = data['institution_name'] ?? '';
-            _avatarUrl = data['avatar_url'];
-
-            if (_genders.contains(data['gender'])) {
-              _selectedGender = data['gender'];
+          // Set Profile Data
+          if (profileResponse != null) {
+            _fullName = profileResponse['full_name'] ?? 'User';
+            
+            // UPDATED: Ambil Avatar URL dari DB
+            _avatarUrl = profileResponse['avatar_url'];
+            
+            // Trik Cache Busting: Tambah timestamp agar gambar terbaru muncul
+            if (_avatarUrl != null) {
+               _avatarUrl = "$_avatarUrl?t=${DateTime.now().millisecondsSinceEpoch}";
             }
-            if (_occupations.contains(data['occupation'])) {
-              _selectedOccupation = data['occupation'];
+
+            // Info lainnya masuk ke Form Controller
+            _nicknameController.text = profileResponse['nickname'] ?? '';
+            _ageController.text = profileResponse['age']?.toString() ?? '';
+            _locationController.text = profileResponse['location'] ?? '';
+            _institutionController.text = profileResponse['institution_name'] ?? '';
+            
+            if (_genders.contains(profileResponse['gender'])) {
+              _selectedGender = profileResponse['gender'];
+            }
+            if (_occupations.contains(profileResponse['occupation'])) {
+              _selectedOccupation = profileResponse['occupation'];
             }
           }
+
+          // Set Subscription Data
+          if (levelResponse != null) {
+            _subscriptionStatus = levelResponse['status'] ?? 'Regular';
+            _isPro = _subscriptionStatus.contains('Premium'); 
+          } else {
+            _isPro = false;
+            _subscriptionStatus = "Regular";
+          }
+
           _isFetching = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching profile: $e");
+      debugPrint("Error fetching data: $e");
       if (mounted) setState(() => _isFetching = false);
+      _showSnackBar("Failed to fetch profile data.", isError: true);
     }
   }
 
-  // --- 2. UPDATE/UPSERT DATA (THE FIX) ---
+  // --- UPDATE DATA ---
   Future<void> _saveProfile() async {
+    if (_nicknameController.text.isEmpty) {
+      _showSnackBar("Nickname cannot be empty.", isError: true);
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      // 1. Include the 'id' in the updates map
       final updates = {
-        'id':
-            user.id, // CRITICAL: Required for Upsert to know which row to touch
         'nickname': _nicknameController.text.trim(),
         'age': int.tryParse(_ageController.text.trim()),
         'gender': _selectedGender,
@@ -122,45 +159,37 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      debugPrint("Attempting to Upsert: $updates");
-
-      // 2. Use UPSERT instead of UPDATE
-      // This creates the row if it's missing, or updates it if it exists.
-      final response = await Supabase.instance.client
+      await Supabase.instance.client
           .from('profiles')
-          .upsert(updates)
-          .select(); // .select() ensures we get a response back to verify success
-
-      debugPrint("Upsert Success: $response");
+          .update(updates)
+          .eq('id', user.id);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Profile updated successfully!"),
-            backgroundColor: AppColors.success,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
+        _showSnackBar("Profile updated successfully!", isError: false);
         Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint("Upsert Error: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error updating profile: $e"),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
+      debugPrint("Update Error: $e");
+      _showSnackBar("Failed to update profile: $e", isError: true);
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
+  void _showSnackBar(String message, {bool isError = true}) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message, style: const TextStyle(color: Colors.white)),
+        backgroundColor: isError ? AppColors.error : AppColors.success,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  // --- UI BUILD ---
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
@@ -180,7 +209,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           ),
           centerTitle: true,
           title: const Text(
-            "Personal Info",
+            "Edit Profile",
             style: TextStyle(
               color: AppColors.textMain,
               fontWeight: FontWeight.w800,
@@ -194,15 +223,13 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                 child: CircularProgressIndicator(color: AppColors.primary),
               )
             : SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
                     _buildProfileHeader(),
                     const SizedBox(height: 30),
+                    
                     Container(
                       padding: const EdgeInsets.all(24),
                       decoration: BoxDecoration(
@@ -231,11 +258,14 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                             isReadOnly: true,
                           ),
                           const SizedBox(height: 20),
+                          
+                          // --- FIXED ROW (AGE & GENDER) ---
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              // Age
                               Expanded(
-                                flex: 3,
+                                flex: 4, 
                                 child: _BuildTextField(
                                   label: "Age",
                                   controller: _ageController,
@@ -243,9 +273,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                                   keyboardType: TextInputType.number,
                                 ),
                               ),
-                              const SizedBox(width: 16),
+                              // Gap
+                              const SizedBox(width: 10), 
+                              // Gender
                               Expanded(
-                                flex: 4,
+                                flex: 6,
                                 child: _BuildDropdown(
                                   label: "Gender",
                                   value: _selectedGender,
@@ -257,6 +289,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                               ),
                             ],
                           ),
+                          // --------------------------------
+                          
                           const SizedBox(height: 20),
                           _BuildTextField(
                             label: "Location",
@@ -290,13 +324,20 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }
 
   Widget _buildProfileHeader() {
+    String displayHeader = _fullName; 
+    if (displayHeader.isEmpty) displayHeader = "User";
+
+    // UPDATED: Logic untuk menentukan gambar
     ImageProvider imageProvider;
+    
+    // 1. Jika ada URL dari DB (dan tidak kosong), gunakan itu
     if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
       imageProvider = NetworkImage(_avatarUrl!);
-    } else {
-      imageProvider = const NetworkImage(
-        'https://ui-avatars.com/api/?name=User&background=random',
-      );
+    } 
+    // 2. Jika tidak ada, pakai UI Avatars (Inisial)
+    else {
+      final avatarUrl = 'https://ui-avatars.com/api/?name=${Uri.encodeComponent(displayHeader)}&background=random&size=200&bold=true';
+      imageProvider = NetworkImage(avatarUrl);
     }
 
     return Column(
@@ -319,16 +360,33 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               child: CircleAvatar(
                 radius: 50,
                 backgroundColor: const Color(0xFFF1F5F9),
+                // ValueKey penting agar Flutter me-refresh gambar jika URL berubah
+                key: ValueKey(_avatarUrl ?? displayHeader), 
                 backgroundImage: imageProvider,
+              ),
+            ),
+            
+            // Camera Icon Button
+            InkWell(
+              onTap: () {
+                _showSnackBar("Please change photo from the main Profile menu.", isError: false);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.white, width: 2),
+                ),
+                child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 16),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
+        
         Text(
-          _nicknameController.text.isEmpty
-              ? "New User"
-              : _nicknameController.text,
+          displayHeader, 
           style: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -336,6 +394,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
             letterSpacing: -0.5,
           ),
         ),
+        
         const SizedBox(height: 4),
         Text(
           _emailController.text,
@@ -346,6 +405,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
           ),
         ),
         const SizedBox(height: 12),
+        
+        // Subscription Badge
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -367,7 +428,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               ),
               const SizedBox(width: 6),
               Text(
-                _isPro ? "Pro Active" : "Free Plan",
+                _isPro ? "Pro Active ($_subscriptionStatus)" : "Free Plan",
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -482,8 +543,9 @@ class _BuildTextField extends StatelessWidget {
             ),
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
-              horizontal: 20,
+              horizontal: 12, 
             ),
+            isDense: true,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
@@ -494,10 +556,6 @@ class _BuildTextField extends StatelessWidget {
                 color: AppColors.primary,
                 width: 1.5,
               ),
-            ),
-            disabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide.none,
             ),
           ),
         ),
@@ -537,6 +595,7 @@ class _BuildDropdown extends StatelessWidget {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           value: value,
+          isExpanded: true, 
           icon: const Icon(
             Icons.keyboard_arrow_down_rounded,
             color: Color(0xFF94A3B8),
@@ -552,8 +611,9 @@ class _BuildDropdown extends StatelessWidget {
             prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 22),
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
-              horizontal: 20,
+              horizontal: 12, 
             ),
+            isDense: true, 
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -567,7 +627,14 @@ class _BuildDropdown extends StatelessWidget {
             ),
           ),
           items: items.map((String item) {
-            return DropdownMenuItem<String>(value: item, child: Text(item));
+            return DropdownMenuItem<String>(
+              value: item, 
+              child: Text(
+                item,
+                overflow: TextOverflow.ellipsis, 
+                maxLines: 1,
+              )
+            );
           }).toList(),
           onChanged: onChanged,
           dropdownColor: Colors.white,

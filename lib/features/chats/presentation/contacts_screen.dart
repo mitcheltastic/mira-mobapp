@@ -157,7 +157,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             )
           : ListView.separated(
               itemCount: _friends.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
+              separatorBuilder: (_, _) => const Divider(height: 1),
               itemBuilder: (context, index) {
                 final friend = _friends[index];
 

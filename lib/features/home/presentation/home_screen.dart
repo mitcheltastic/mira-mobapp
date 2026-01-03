@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
-import '../../dashboard/widgets/dashboard_header.dart';
+import '../../dashboard/widgets/dashboard_header.dart'; 
 import '../widgets/focus_card.dart';
 import '../widgets/tools_grid.dart';
 
@@ -33,14 +33,15 @@ class _HomeScreenState extends State<HomeScreen>
 
   // --- STATE UI ---
   bool _isSearching = false;
+  bool _isLoadingHeader = true;
   late AnimationController _bgController;
   late Animation<double> _bgAnimation;
 
   // --- STATE DATA (Dynamic) ---
   String _userName = "Friend";
   String? _avatarUrl;
-  String _levelStatus = "Reguler"; // Default status
-  bool _isPro = false; // Derived from levelStatus
+  String _levelStatus = "Reguler";
+  bool _isPro = false;
 
   // --- MASTER DATA ---
   final List<Map<String, dynamic>> _masterSearchData = [
@@ -123,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _fetchUserData(); // Updated function name
+    _fetchUserData(); 
     _searchController.addListener(_onSearchChanged);
 
     _bgController = AnimationController(
@@ -137,20 +138,16 @@ class _HomeScreenState extends State<HomeScreen>
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
   }
 
-  // --- FUNGSI FETCH DATA (Parallel Fetch) ---
   Future<void> _fetchUserData() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
-        // Run both queries in parallel for speed
         final results = await Future.wait([
-          // 0: Profile Data
           Supabase.instance.client
               .from('profiles')
               .select('full_name, avatar_url')
               .eq('id', user.id)
-              .single(),
-          // 1: Level Data
+              .maybeSingle(),
           Supabase.instance.client
               .from('level')
               .select('status')
@@ -158,31 +155,38 @@ class _HomeScreenState extends State<HomeScreen>
               .maybeSingle(),
         ]);
 
-        final profileData = results[0] as Map<String, dynamic>;
+        final profileData = results[0];
         final levelData = results[1];
 
         if (mounted) {
           setState(() {
-            // 1. Set Name
-            String fullName = profileData['full_name'] ?? "Friend";
-            _userName = fullName.split(' ')[0];
 
-            // 2. Set Avatar
-            _avatarUrl = profileData['avatar_url'];
+            if (profileData != null) {
+              String fullName = profileData['full_name'] ?? "Friend";
+              _userName = fullName.split(' ')[0]; // Take first name
+              _avatarUrl = profileData['avatar_url'];
 
-            // 3. Set Status & Pro Flag
+              if (_avatarUrl != null) {
+                 _avatarUrl = "$_avatarUrl?t=${DateTime.now().millisecondsSinceEpoch}";
+              }
+            }
+
             if (levelData != null && levelData['status'] != null) {
               _levelStatus = levelData['status'];
-              // Check if status contains "Premium"
               _isPro =
                   _levelStatus == 'Monthly Premium' ||
                   _levelStatus == 'Yearly Premium';
             }
+            
+            _isLoadingHeader = false;
           });
         }
+      } else {
+         if(mounted) setState(() => _isLoadingHeader = false);
       }
     } catch (e) {
       debugPrint("Error fetching home data: $e");
+      if(mounted) setState(() => _isLoadingHeader = false);
     }
   }
 
@@ -241,40 +245,44 @@ class _HomeScreenState extends State<HomeScreen>
 
           SafeArea(
             bottom: false,
-            child: Column(
-              children: [
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  child: _isSearching
-                      ? const SizedBox(height: 10)
-                      : Column(
-                          children: [
-                            // --- UPDATED HEADER CALL ---
-                            DashboardHeader(
-                              userName: _userName,
-                              isPro: _isPro,
-                              avatarUrl: _avatarUrl, // Pass URL from DB
+            child: RefreshIndicator(
+              onRefresh: _fetchUserData,
+              color: AppColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                child: Column(
+                  children: [
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      child: _isSearching
+                          ? const SizedBox(height: 10)
+                          : Column(
+                              children: [
+                                // --- UPDATED HEADER CALL ---
+                                DashboardHeader(
+                                  userName: _userName,
+                                  isPro: _isPro,
+                                  avatarUrl: _avatarUrl,
+                                  isLoading: _isLoadingHeader,
+                                  onAvatarTap: () => widget.onSwitchTab(3),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                          ],
-                        ),
-                ),
+                    ),
 
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _buildFunctionalSearchBar(),
-                ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: _buildFunctionalSearchBar(),
+                    ),
 
-                const SizedBox(height: 24),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _isSearching
+                    const SizedBox(height: 24),
+                    _isSearching
                         ? _buildSearchResults()
                         : _buildDashboardContent(),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -283,8 +291,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildDashboardContent() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+    return Padding(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -317,32 +324,36 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildSearchResults() {
     if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.manage_search_rounded,
-              size: 80,
-              color: AppColors.primary.withValues(alpha: 0.2),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "No matching features found",
-              style: TextStyle(
-                color: AppColors.textMain,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+      return SizedBox(
+        height: 400,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.manage_search_rounded,
+                size: 80,
+                color: AppColors.primary.withValues(alpha: 0.2),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              const Text(
+                "No matching features found",
+                style: TextStyle(
+                  color: AppColors.textMain,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      physics: const BouncingScrollPhysics(),
+      shrinkWrap: true, // Important when nested
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: _searchResults.length,
       separatorBuilder: (c, i) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
