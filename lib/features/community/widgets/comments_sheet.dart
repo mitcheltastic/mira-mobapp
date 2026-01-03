@@ -1,33 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../../core/constant/app_colors.dart';
 
 class CommentsSheet extends StatefulWidget {
-  const CommentsSheet({super.key});
+  final String postId;
+
+  const CommentsSheet({super.key, required this.postId});
 
   @override
   State<CommentsSheet> createState() => _CommentsSheetState();
 }
 
 class _CommentsSheetState extends State<CommentsSheet> {
+  final _supabase = Supabase.instance.client;
   final TextEditingController _commentController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
-  
-  bool _isComposing = false;
 
-  final List<Map<String, dynamic>> _comments = [
-    {
-      "name": "Sarah Jenkins",
-      "avatar": "https://i.pravatar.cc/150?u=1",
-      "content": "This is exactly what I needed to hear today. Great explanation! 👏",
-      "time": "2h",
-      "likes": 12,
-    },
-  ];
+  bool _isComposing = false;
 
   @override
   void initState() {
     super.initState();
-    // Listener untuk mengecek apakah textfield kosong/tidak
     _commentController.addListener(() {
       setState(() {
         _isComposing = _commentController.text.trim().isNotEmpty;
@@ -42,27 +36,49 @@ class _CommentsSheetState extends State<CommentsSheet> {
     super.dispose();
   }
 
-  // Fungsi Menambah Komentar
-  void _handleSubmitted() {
+  Stream<List<Map<String, dynamic>>> _getCommentsStream() {
+    return _supabase
+        .from('comments')
+        .stream(primaryKey: ['id'])
+        .eq('post_id', widget.postId)
+        .order('created_at', ascending: false)
+        .asyncMap((data) async {
+          final futures = data.map((comment) async {
+            final profile = await _supabase
+                .from('profiles')
+                .select()
+                .eq('id', comment['user_id'])
+                .single();
+
+            return {...comment, 'profile': profile};
+          });
+          return await Future.wait(futures);
+        });
+  }
+
+  void _handleSubmitted() async {
     if (!_isComposing) return;
 
-    final String text = _commentController.text;
-
-    setState(() {
-      // Masukkan komentar baru ke indeks 0 (Paling atas)
-      _comments.insert(0, {
-        "name": "You", // Nama User Login
-        "avatar": null, // null akan merender inisial
-        "content": text,
-        "time": "Just now",
-        "likes": 0,
-      });
-      _isComposing = false;
-    });
-
+    final content = _commentController.text.trim();
     _commentController.clear();
-    // Opsional: Tutup keyboard setelah kirim
-    // _focusNode.unfocus(); 
+    setState(() => _isComposing = false);
+
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+
+      await _supabase.from('comments').insert({
+        'post_id': widget.postId,
+        'user_id': user.id,
+        'content': content,
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Failed to post comment: $e")));
+      }
+    }
   }
 
   @override
@@ -77,7 +93,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
       ),
       child: Column(
         children: [
-          // --- 1. HEADER ---
+          // --- HEADER ---
           Container(
             padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
@@ -85,7 +101,6 @@ class _CommentsSheetState extends State<CommentsSheet> {
             ),
             child: Column(
               children: [
-                // Drag Handle
                 Container(
                   width: 36,
                   height: 4,
@@ -95,10 +110,9 @@ class _CommentsSheetState extends State<CommentsSheet> {
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
-                // Title Dynamic
-                Text(
-                  "Comments (${_comments.length})",
-                  style: const TextStyle(
+                const Text(
+                  "Comments",
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 16,
                     color: AppColors.textMain,
@@ -108,28 +122,48 @@ class _CommentsSheetState extends State<CommentsSheet> {
             ),
           ),
 
-          // --- 2. LIST AREA ---
+          // --- LIST AREA ---
           Expanded(
-            child: _comments.isEmpty
-                ? Center(
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _getCommentsStream(),
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text("Error: ${snapshot.error}"));
+                }
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+
+                final comments = snapshot.data!;
+
+                if (comments.isEmpty) {
+                  return Center(
                     child: Text(
                       "No comments yet.\nBe the first to say something!",
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey[400]),
                     ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                    itemCount: _comments.length,
-                    separatorBuilder: (context, index) => const SizedBox(height: 24),
-                    itemBuilder: (context, index) {
-                      final comment = _comments[index];
-                      return _CommentItem(data: comment);
-                    },
+                  );
+                }
+
+                return ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 20,
                   ),
+                  itemCount: comments.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 24),
+                  itemBuilder: (context, index) {
+                    final comment = comments[index];
+                    return _CommentItem(data: comment);
+                  },
+                );
+              },
+            ),
           ),
 
-          // --- 3. INPUT AREA ---
+          // --- INPUT AREA ---
           Container(
             padding: EdgeInsets.fromLTRB(16, 12, 16, keyboardPadding + 12),
             decoration: BoxDecoration(
@@ -145,22 +179,18 @@ class _CommentsSheetState extends State<CommentsSheet> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // User Avatar (Current User)
-                const CircleAvatar(
-                  radius: 18,
-                  backgroundColor: AppColors.primary,
-                  backgroundImage: NetworkImage("https://i.pravatar.cc/150?u=my_profile"),
-                ),
-                const SizedBox(width: 12),
-                
+                // REMOVED: CircleAvatar was here
+
                 // Text Field
                 Expanded(
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9), // Slate 100
+                      color: const Color(0xFFF1F5F9),
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: Colors.transparent),
                     ),
                     child: TextField(
                       controller: _commentController,
@@ -168,7 +198,10 @@ class _CommentsSheetState extends State<CommentsSheet> {
                       minLines: 1,
                       maxLines: 4,
                       textCapitalization: TextCapitalization.sentences,
-                      style: const TextStyle(fontSize: 14, color: AppColors.textMain),
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textMain,
+                      ),
                       decoration: const InputDecoration(
                         hintText: "Add a comment...",
                         hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
@@ -180,7 +213,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                
+
                 // Send Button
                 InkWell(
                   onTap: _isComposing ? _handleSubmitted : null,
@@ -189,13 +222,13 @@ class _CommentsSheetState extends State<CommentsSheet> {
                     duration: const Duration(milliseconds: 200),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: _isComposing 
-                          ? AppColors.primary 
-                          : AppColors.primary.withValues(alpha: 0.1), // Dimmed if empty
+                      color: _isComposing
+                          ? AppColors.primary
+                          : AppColors.primary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      Icons.arrow_upward_rounded, // Icon panah lebih modern utk "Send"
+                      Icons.arrow_upward_rounded,
                       color: _isComposing ? Colors.white : AppColors.primary,
                       size: 20,
                     ),
@@ -210,7 +243,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
   }
 }
 
-// --- WIDGET ITEM KOMENTAR (Refined Layout) ---
+// --- WIDGET ITEM KOMENTAR (Keep unchanged) ---
 class _CommentItem extends StatelessWidget {
   final Map<String, dynamic> data;
 
@@ -218,33 +251,45 @@ class _CommentItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final profile = data['profile'] ?? {};
+    final fullName = profile['full_name'] as String?;
+    final nickname = profile['nickname'] as String?;
+    final name = fullName ?? nickname ?? "Unknown";
+    final avatarUrl = profile['avatar_url'] as String?;
+
+    final createdAt = DateTime.parse(data['created_at']).toLocal();
+    final timeString = timeago.format(createdAt, locale: 'en_short');
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Avatar
         CircleAvatar(
           radius: 18,
           backgroundColor: Colors.grey[200],
-          backgroundImage: data['avatar'] != null ? NetworkImage(data['avatar']) : null,
-          child: data['avatar'] == null
-              ? Text(data['name'][0], style: const TextStyle(fontSize: 12, color: AppColors.textMain, fontWeight: FontWeight.bold))
+          backgroundImage: (avatarUrl != null) ? NetworkImage(avatarUrl) : null,
+          child: (avatarUrl == null)
+              ? Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : "?",
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMain,
+                    fontWeight: FontWeight.bold,
+                  ),
+                )
               : null,
         ),
         const SizedBox(width: 12),
-
-        // Content
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Row (Name • Time)
               Row(
                 children: [
                   Text(
-                    data['name'],
+                    name,
                     style: const TextStyle(
                       fontWeight: FontWeight.w700,
-                      fontSize: 13, // Sedikit lebih kecil dari body text
+                      fontSize: 13,
                       color: AppColors.textMain,
                     ),
                   ),
@@ -255,7 +300,7 @@ class _CommentItem extends StatelessWidget {
                   ),
                   const SizedBox(width: 6),
                   Text(
-                    data['time'],
+                    timeString,
                     style: TextStyle(
                       color: Colors.grey[500],
                       fontSize: 12,
@@ -265,41 +310,20 @@ class _CommentItem extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 2),
-
-              // Comment Text
               Text(
-                data['content'],
+                data['content'] ?? "",
                 style: const TextStyle(
-                  color: Color(0xFF334155), // Slate 700 standard text
+                  color: Color(0xFF334155),
                   fontSize: 14,
-                  height: 1.4, // Line height 140% untuk keterbacaan
+                  height: 1.4,
                   fontWeight: FontWeight.w400,
                 ),
               ),
               const SizedBox(height: 8),
-
-              // Actions (Reply, Like)
               Row(
-                children: [
-                  _ActionButton(label: "Reply", onTap: () {}),
-                  const SizedBox(width: 16),
-                  _ActionButton(
-                    label: data['likes'] > 0 ? "${data['likes']} likes" : "Like",
-                    onTap: () {},
-                  ),
-                ],
+                children: [_ActionButton(label: "Reply", onTap: () {})],
               ),
             ],
-          ),
-        ),
-
-        // Optional Heart Icon (Instagram Style)
-        Padding(
-          padding: const EdgeInsets.only(top: 10, left: 4),
-          child: Icon(
-            Icons.favorite_outline,
-            size: 14,
-            color: Colors.grey[400],
           ),
         ),
       ],
@@ -307,7 +331,6 @@ class _CommentItem extends StatelessWidget {
   }
 }
 
-// Helper Widget
 class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;

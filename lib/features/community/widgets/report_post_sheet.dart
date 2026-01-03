@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constant/app_colors.dart';
 
 class ReportPostSheet extends StatefulWidget {
-  const ReportPostSheet({super.key});
+  final String postId; // 1. ID required to report specific post
+
+  const ReportPostSheet({super.key, required this.postId});
 
   @override
   State<ReportPostSheet> createState() => _ReportPostSheetState();
 }
 
 class _ReportPostSheetState extends State<ReportPostSheet> {
-  // Opsi Report
+  final _supabase = Supabase.instance.client;
+
   final List<String> _reasons = [
     "It's spam",
     "Nudity or sexual activity",
@@ -22,26 +26,55 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
   ];
 
   String? _selectedReason;
+  bool _isSubmitting = false; // 2. Loading state
 
-  void _submitReport() {
-    Navigator.pop(context); // Tutup sheet
-    
-    // Tampilkan konfirmasi
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: const [
-            Icon(Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 12),
-            Text("Thanks for letting us know"),
-          ],
-        ),
-        behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.black87,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
+  Future<void> _submitReport() async {
+    if (_selectedReason == null) return;
+
+    setState(() => _isSubmitting = true);
+
+    try {
+      final user = _supabase.auth.currentUser;
+      if (user == null) return;
+
+      // 3. Insert into Database
+      await _supabase.from('reports').insert({
+        'reporter_id': user.id,
+        'post_id': widget.postId,
+        'reason': _selectedReason,
+      });
+
+      if (mounted) {
+        Navigator.pop(context); // Close sheet
+
+        // Show Success Message
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: const [
+                Icon(Icons.check_circle, color: Colors.white, size: 20),
+                SizedBox(width: 12),
+                Text("Thanks. We've received your report."),
+              ],
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: Colors.black87,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error submitting report: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -101,7 +134,8 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8),
               itemCount: _reasons.length,
-              separatorBuilder: (c, i) => const Divider(height: 1, indent: 24, endIndent: 24),
+              separatorBuilder: (c, i) =>
+                  const Divider(height: 1, indent: 24, endIndent: 24),
               itemBuilder: (context, index) {
                 final reason = _reasons[index];
                 final isSelected = _selectedReason == reason;
@@ -109,13 +143,19 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
                 return InkWell(
                   onTap: () => setState(() => _selectedReason = reason),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 24,
+                      vertical: 16,
+                    ),
                     child: Row(
                       children: [
                         Expanded(
                           child: Text(
                             reason,
-                            style: const TextStyle(fontSize: 15, color: AppColors.textMain),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              color: AppColors.textMain,
+                            ),
                           ),
                         ),
                         Container(
@@ -124,7 +164,9 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: isSelected ? AppColors.primary : Colors.grey[400]!,
+                              color: isSelected
+                                  ? AppColors.primary
+                                  : Colors.grey[400]!,
                               width: 2,
                             ),
                           ),
@@ -148,26 +190,44 @@ class _ReportPostSheetState extends State<ReportPostSheet> {
 
           // Footer Button
           Padding(
-            padding: EdgeInsets.fromLTRB(24, 16, 24, MediaQuery.of(context).viewInsets.bottom + 24),
+            padding: EdgeInsets.fromLTRB(
+              24,
+              16,
+              24,
+              MediaQuery.of(context).viewInsets.bottom + 24,
+            ),
             child: SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _selectedReason != null ? _submitReport : null,
+                onPressed: (_selectedReason != null && !_isSubmitting)
+                    ? _submitReport
+                    : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppColors.textMain,
                   disabledBackgroundColor: Colors.grey[300],
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  "Submit Report",
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
+                child: _isSubmitting
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text(
+                        "Submit Report",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
               ),
             ),
           ),

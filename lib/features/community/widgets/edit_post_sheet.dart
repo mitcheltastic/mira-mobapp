@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Import Supabase
 import '../../../../core/constant/app_colors.dart';
 
 class EditPostSheet extends StatefulWidget {
+  final String postId; // 2. Need ID to identify post
   final String initialContent;
-  final Function(String) onSave;
+  final Function(String) onSave; // Optional: To update UI locally if needed
 
   const EditPostSheet({
-    super.key, 
-    required this.initialContent, 
-    required this.onSave
+    super.key,
+    required this.postId,
+    required this.initialContent,
+    required this.onSave,
   });
 
   @override
@@ -16,18 +19,20 @@ class EditPostSheet extends StatefulWidget {
 }
 
 class _EditPostSheetState extends State<EditPostSheet> {
+  final _supabase = Supabase.instance.client; // 3. Client Instance
   late TextEditingController _controller;
   bool _hasChanges = false;
+  bool _isSaving = false; // 4. Loading State
 
   @override
   void initState() {
     super.initState();
     _controller = TextEditingController(text: widget.initialContent);
-    
-    // Listener untuk mendeteksi perubahan real-time
+
     _controller.addListener(() {
-      final isChanged = _controller.text.trim().isNotEmpty && 
-                        _controller.text != widget.initialContent;
+      final isChanged =
+          _controller.text.trim().isNotEmpty &&
+          _controller.text != widget.initialContent;
       if (_hasChanges != isChanged) {
         setState(() => _hasChanges = isChanged);
       }
@@ -40,9 +45,45 @@ class _EditPostSheetState extends State<EditPostSheet> {
     super.dispose();
   }
 
+  // --- 5. LOGIC: Update Post in Database ---
+  Future<void> _handleSave() async {
+    if (!_hasChanges) return;
+
+    setState(() => _isSaving = true);
+
+    try {
+      final content = _controller.text.trim();
+
+      // Update Supabase
+      await _supabase
+          .from('posts')
+          .update({'content': content})
+          .eq('id', widget.postId); // Find by ID
+
+      // Success
+      if (mounted) {
+        widget.onSave(content); // Notify parent (optional)
+        Navigator.pop(context); // Close sheet
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Post updated successfully")),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error updating post: $e"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Mengambil padding keyboard
     final keyboardPadding = MediaQuery.of(context).viewInsets.bottom;
 
     return Container(
@@ -55,7 +96,7 @@ class _EditPostSheetState extends State<EditPostSheet> {
       ),
       child: Column(
         children: [
-          // --- 1. DRAG HANDLE (Visual Cue) ---
+          // --- 1. DRAG HANDLE ---
           Center(
             child: Container(
               margin: const EdgeInsets.only(top: 12, bottom: 8),
@@ -79,7 +120,10 @@ class _EditPostSheetState extends State<EditPostSheet> {
                   onPressed: () => Navigator.pop(context),
                   style: TextButton.styleFrom(
                     foregroundColor: Colors.grey[600],
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
@@ -96,38 +140,49 @@ class _EditPostSheetState extends State<EditPostSheet> {
                   ),
                 ),
 
-                // Save Button (Pill Styled)
+                // Save Button (Updated with Loading State)
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   decoration: BoxDecoration(
-                    color: _hasChanges ? AppColors.textMain : Colors.grey[200],
+                    color: _hasChanges && !_isSaving
+                        ? AppColors.textMain
+                        : Colors.grey[200],
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: InkWell(
-                    onTap: _hasChanges
-                        ? () {
-                            widget.onSave(_controller.text);
-                            Navigator.pop(context);
-                          }
-                        : null,
+                    onTap: (_hasChanges && !_isSaving) ? _handleSave : null,
                     borderRadius: BorderRadius.circular(20),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                      child: Text(
-                        "Save",
-                        style: TextStyle(
-                          color: _hasChanges ? Colors.white : Colors.grey[400],
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 8,
                       ),
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.grey,
+                              ),
+                            )
+                          : Text(
+                              "Save",
+                              style: TextStyle(
+                                color: _hasChanges
+                                    ? Colors.white
+                                    : Colors.grey[400],
+                                fontWeight: FontWeight.bold,
+                                fontSize: 14,
+                              ),
+                            ),
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          
+
           const Divider(height: 1, thickness: 0.5),
 
           // --- 3. EDITOR AREA ---
@@ -137,53 +192,66 @@ class _EditPostSheetState extends State<EditPostSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // User Identity (Context)
+                  // User Identity (Static for now, or you can fetch it if needed)
                   Row(
                     children: [
-                      const CircleAvatar(
+                      // You can replace this with the actual user avatar if available
+                      CircleAvatar(
                         radius: 20,
-                        backgroundImage: NetworkImage("https://i.pravatar.cc/150?u=my_profile"),
-                        backgroundColor: AppColors.primary,
+                        backgroundColor: AppColors.primary.withValues(
+                          alpha: 0.1,
+                        ),
+                        child: const Icon(
+                          Icons.person,
+                          color: AppColors.primary,
+                        ),
                       ),
                       const SizedBox(width: 12),
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "Hilmy Baihaqi",
+                            "Editing Post", // Generic title since we might not have the user name here easily
                             style: TextStyle(
-                              fontWeight: FontWeight.w700, 
-                              fontSize: 15, 
-                              color: AppColors.textMain
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                              color: AppColors.textMain,
                             ),
                           ),
                           const SizedBox(height: 2),
                           Row(
                             children: [
                               Text(
-                                "Editing",
-                                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                                "Public",
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey[500],
+                                ),
                               ),
                               const SizedBox(width: 4),
-                              Icon(Icons.public, size: 12, color: Colors.grey[500]),
+                              Icon(
+                                Icons.public,
+                                size: 12,
+                                color: Colors.grey[500],
+                              ),
                             ],
                           ),
                         ],
-                      )
+                      ),
                     ],
                   ),
-                  
+
                   const SizedBox(height: 24),
 
                   // Text Input
                   TextField(
                     controller: _controller,
                     autofocus: true,
-                    maxLines: null, // Unlimited lines
+                    maxLines: null,
                     keyboardType: TextInputType.multiline,
                     style: const TextStyle(
-                      fontSize: 17, 
-                      height: 1.6, // Line height agar enak dibaca
+                      fontSize: 17,
+                      height: 1.6,
                       color: AppColors.textMain,
                       fontWeight: FontWeight.w400,
                     ),
@@ -198,15 +266,14 @@ class _EditPostSheetState extends State<EditPostSheet> {
             ),
           ),
 
-          // --- 4. BOTTOM BAR (Character Count) ---
-          // Opsional: Bar kecil di atas keyboard untuk indikator
+          // --- 4. BOTTOM BAR ---
           if (MediaQuery.of(context).viewInsets.bottom > 0)
             Container(
               padding: EdgeInsets.only(
-                left: 16, 
-                right: 16, 
+                left: 16,
+                right: 16,
                 top: 8,
-                bottom: MediaQuery.of(context).viewInsets.bottom + 8
+                bottom: MediaQuery.of(context).viewInsets.bottom + 8,
               ),
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -215,7 +282,6 @@ class _EditPostSheetState extends State<EditPostSheet> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
-                  // Character Counter Real-time
                   ValueListenableBuilder(
                     valueListenable: _controller,
                     builder: (context, TextEditingValue value, child) {

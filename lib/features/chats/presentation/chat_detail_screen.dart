@@ -3,10 +3,19 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../../core/constant/app_colors.dart';
 import '../data/chat_user_model.dart';
+import '../../../core/services/presence_service.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final ChatUser user;
-  const ChatDetailScreen({super.key, required this.user});
+  final String otherUserId;
+  final String? profileImage; // 1. Define the parameter
+
+  const ChatDetailScreen({
+    super.key,
+    required this.user,
+    required this.otherUserId,
+    this.profileImage, // 2. Add to constructor
+  });
 
   @override
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
@@ -16,6 +25,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final SupabaseClient _supabase = Supabase.instance.client;
   final TextEditingController _textController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+
   late String _roomId;
   late String _myId;
   bool _isComposing = false;
@@ -24,7 +34,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void initState() {
     super.initState();
     _myId = _supabase.auth.currentUser!.id;
-    _roomId = widget.user.avatarUrl; // RECOVERY: Room ID is passed here
+    _roomId = widget.user.avatarUrl;
   }
 
   @override
@@ -32,6 +42,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  void _markRoomAsRead() async {
+    try {
+      await _supabase
+          .from('messages')
+          .update({'is_read': true})
+          .eq('room_id', _roomId)
+          .neq('sender_id', _myId)
+          .eq('is_read', false);
+    } catch (e) {
+      debugPrint("Error marking as read: $e");
+    }
   }
 
   void _handleSubmitted(String text) async {
@@ -47,6 +70,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         'content': content,
         'is_read': false,
       });
+
       await _supabase
           .from('chat_rooms')
           .update({'updated_at': DateTime.now().toIso8601String()})
@@ -82,7 +106,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 if (!snapshot.hasData) {
                   return const Center(child: CircularProgressIndicator());
                 }
+
                 final messages = snapshot.data!;
+                final hasUnread = messages.any(
+                  (msg) => msg['sender_id'] != _myId && msg['is_read'] == false,
+                );
+
+                if (hasUnread) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _markRoomAsRead();
+                  });
+                }
+
                 return ListView.separated(
                   controller: _scrollController,
                   padding: const EdgeInsets.symmetric(
@@ -97,21 +132,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     final msg = messages[index];
                     final isMe = msg['sender_id'] == _myId;
 
-                    // (Keep your existing read status update logic here)
-                    if (!isMe && msg['is_read'] == false) {
-                      _supabase
-                          .from('messages')
-                          .update({'is_read': true})
-                          .eq('id', msg['id']);
-                    }
-
                     return _MessageBubble(
                       text: msg['content'],
                       isMe: isMe,
                       time: DateTime.parse(msg['created_at']).toLocal(),
-                      isRead:
-                          msg['is_read'] ??
-                          false, // <--- PASS THE VALUE FROM DB
+                      isRead: msg['is_read'] ?? false,
                     );
                   },
                 );
@@ -136,43 +161,63 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Row(
-        children: [
-          CircleAvatar(
-            radius: 20,
-            backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-            child: Text(
-              widget.user.name[0].toUpperCase(),
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      title: StreamBuilder<Set<String>>(
+        stream: PresenceService().onlineUsersStream,
+        builder: (context, snapshot) {
+          final onlineUsers = snapshot.data ?? {};
+          final isOnline = onlineUsers.contains(widget.otherUserId);
+
+          return Row(
             children: [
-              Text(
-                widget.user.name,
-                style: const TextStyle(
-                  color: AppColors.textMain,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                ),
+              CircleAvatar(
+                radius: 20,
+                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                // 3. Use the profileImage here
+                backgroundImage:
+                    (widget.profileImage != null &&
+                        widget.profileImage!.isNotEmpty)
+                    ? NetworkImage(widget.profileImage!)
+                    : null,
+                child:
+                    (widget.profileImage == null ||
+                        widget.profileImage!.isEmpty)
+                    ? Text(
+                        widget.user.name.isNotEmpty
+                            ? widget.user.name[0].toUpperCase()
+                            : "?",
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
               ),
-              const Text(
-                "Online",
-                style: TextStyle(
-                  color: Color(0xFF10B981),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.user.name,
+                    style: const TextStyle(
+                      color: AppColors.textMain,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    isOnline ? "Online" : "Offline",
+                    style: TextStyle(
+                      color: isOnline ? const Color(0xFF10B981) : Colors.grey,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
             ],
-          ),
-        ],
+          );
+        },
       ),
     );
   }
@@ -247,13 +292,13 @@ class _MessageBubble extends StatelessWidget {
   final String text;
   final bool isMe;
   final DateTime time;
-  final bool isRead; // 1. Add this field
+  final bool isRead;
 
   const _MessageBubble({
     required this.text,
     required this.isMe,
     required this.time,
-    required this.isRead, // 2. Require it here
+    required this.isRead,
   });
 
   @override
@@ -302,7 +347,6 @@ class _MessageBubble extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (isMe) ...[
-                    // 3. DYNAMIC COLOR LOGIC HERE
                     Icon(
                       Icons.done_all_rounded,
                       size: 16,

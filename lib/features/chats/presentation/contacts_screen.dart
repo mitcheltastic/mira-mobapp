@@ -31,26 +31,35 @@ class _ContactsScreenState extends State<ContactsScreen> {
           .from('friendships')
           .select(
             'receiver_id, profiles:receiver_id(*)',
-          ) // Fetch all profile columns
+          ) // (*) fetches avatar_url
           .eq('requester_id', myId)
           .eq('status', 'accepted');
 
       // 2. Friendships where I received the request
       final received = await _supabase
           .from('friendships')
-          .select('requester_id, profiles:requester_id(*)')
+          .select(
+            'requester_id, profiles:requester_id(*)',
+          ) // (*) fetches avatar_url
           .eq('receiver_id', myId)
           .eq('status', 'accepted');
 
-      // 3. Merge them into a single list of Profiles
-      final allFriends = [
+      // 3. Merge raw lists
+      final allRaw = [
         ...sent.map((e) => e['profiles']),
         ...received.map((e) => e['profiles']),
       ];
 
+      // 4. Deduplicate
+      final uniqueFriendsMap = {
+        for (var friend in allRaw) friend['id']: friend,
+      };
+
+      final uniqueFriendsList = uniqueFriendsMap.values.toList();
+
       if (mounted) {
         setState(() {
-          _friends = List<Map<String, dynamic>>.from(allFriends);
+          _friends = List<Map<String, dynamic>>.from(uniqueFriendsList);
           _isLoading = false;
         });
       }
@@ -64,13 +73,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final myId = _supabase.auth.currentUser!.id;
     final friendId = friendProfile['id'];
 
-    // Safe Name Logic
     final fullName = friendProfile['full_name'] as String?;
     final nickname = friendProfile['nickname'] as String?;
     final displayName = fullName ?? nickname ?? "Unknown User";
 
     try {
-      // 1. Check if room exists
       final existingRooms = await _supabase
           .from('chat_rooms')
           .select()
@@ -82,7 +89,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
       if (existingRooms.isNotEmpty) {
         roomId = existingRooms.first['id'];
       } else {
-        // 2. Create new room if none exists
         final newRoom = await _supabase
             .from('chat_rooms')
             .insert({'participant_1': myId, 'participant_2': friendId})
@@ -91,7 +97,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         roomId = newRoom['id'];
       }
 
-      // 3. Navigate
       if (mounted) {
         Navigator.pushReplacement(
           context,
@@ -99,9 +104,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
             builder: (_) => ChatDetailScreen(
               user: ChatUser(
                 name: displayName,
-                avatarUrl: roomId, // Passing room ID for navigation
-                isOnline: true,
+                avatarUrl: roomId,
+                isOnline: false,
               ),
+              otherUserId: friendId,
             ),
           ),
         );
@@ -157,43 +163,66 @@ class _ContactsScreenState extends State<ContactsScreen> {
             )
           : ListView.separated(
               itemCount: _friends.length,
-              separatorBuilder: (_, _) => const Divider(height: 1),
+              physics: const BouncingScrollPhysics(),
+              separatorBuilder: (_, _) => Divider(
+                height: 1,
+                thickness: 1,
+                color: const Color(0xFFF1F5F9),
+                indent: 24,
+                endIndent: 24,
+              ),
               itemBuilder: (context, index) {
                 final friend = _friends[index];
 
-                // --- SAFE NAME LOGIC (Prevents Crash) ---
                 final fullName = friend['full_name'] as String?;
                 final nickname = friend['nickname'] as String?;
                 final name = fullName ?? nickname ?? "Unknown User";
                 final char = name.isNotEmpty ? name[0].toUpperCase() : "?";
 
+                // 1. GET AVATAR URL
+                final avatarUrl = friend['avatar_url'] as String?;
+
                 return ListTile(
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 20,
-                    vertical: 8,
+                    horizontal: 24,
+                    vertical: 12,
                   ),
                   leading: CircleAvatar(
-                    radius: 24,
+                    radius: 26,
                     backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                    child: Text(
-                      char,
-                      style: const TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
+                    // 2. SHOW IMAGE IF AVAILABLE
+                    backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? NetworkImage(avatarUrl)
+                        : null,
+                    // 3. SHOW TEXT ONLY IF NO IMAGE
+                    child: (avatarUrl == null || avatarUrl.isEmpty)
+                        ? Text(
+                            char,
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 18,
+                            ),
+                          )
+                        : null,
                   ),
                   title: Text(
                     name,
                     style: const TextStyle(
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       fontSize: 16,
+                      color: AppColors.textMain,
                     ),
                   ),
-                  subtitle: const Text(
-                    "Tap to message",
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      "Tap to message",
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: AppColors.textMuted.withValues(alpha: 0.7),
+                      ),
+                    ),
                   ),
                   onTap: () => _startChat(friend),
                 );

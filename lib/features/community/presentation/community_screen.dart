@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'dart:async';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
-
+import '../data/post_model.dart';
 import '../widgets/post_card.dart';
 import '../widgets/create_post_sheet.dart';
-import '../widgets/edit_post_sheet.dart'; // Pastikan file ini ada
-import '../widgets/report_post_sheet.dart'; // Widget baru di bawah
+// Adjust the path below to match where your ProfileScreen is located
+import '../../profile/presentation/profile_screen.dart';
 
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
@@ -16,364 +15,226 @@ class CommunityScreen extends StatefulWidget {
 }
 
 class _CommunityScreenState extends State<CommunityScreen> {
-  // Data Postingan
-  List<Map<String, dynamic>> _posts = [];
-  String _searchQuery = "";
-  bool _isLoading = true;
+  final _supabase = Supabase.instance.client;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadInitialData();
-  }
+  // 1. Fetch current user's avatar URL just for the header
+  Future<String?> _getCurrentUserAvatar() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return null;
 
-  Future<void> _loadInitialData() async {
-    setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2));
-    if (mounted) {
-      setState(() {
-        _posts = List.from(initialPosts);
-        _isLoading = false;
-      });
+    try {
+      final data = await _supabase
+          .from('profiles')
+          .select('avatar_url')
+          .eq('id', userId)
+          .single();
+      return data['avatar_url'] as String?;
+    } catch (e) {
+      debugPrint("Error fetching current user avatar: $e");
+      return null;
     }
   }
 
-  // --- LOGIC REFRESH DENGAN SKELETON ---
-  Future<void> _handleRefresh() async {
-    setState(() => _isLoading = true); // 1. Nyalakan Skeleton
-    await Future.delayed(const Duration(seconds: 2)); // 2. Simulasi Network
-    
-    if (mounted) {
-      setState(() {
-        _posts = List.from(initialPosts)..shuffle(); // 3. Acak data
-        _isLoading = false; // 4. Matikan Skeleton
-      });
-    }
-  }
+  // Stream for the timeline posts
+  Stream<List<Post>> _getPostsStream() {
+    final myId = _supabase.auth.currentUser?.id;
 
-  // --- LOGIC CREATE POST ---
-  void _handleCreatePost(String content) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    if (mounted) {
-      setState(() {
-        _posts.insert(0, {
-          "id": DateTime.now().toString(),
-          "name": "You",
-          "userId": "user_001",
-          "avatar": null,
-          "isPro": true,
-          "time": "Just now",
-          "content": content,
-          "likes": 0,
-          "comments": 0,
-          "isLiked": false,
+    return _supabase
+        .from('posts')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
+        .asyncMap((List<Map<String, dynamic>> data) async {
+          if (data.isEmpty) return <Post>[];
+
+          // 1. Prepare Lists for Batch Querying
+          final userIds = data.map((e) => e['user_id']).toSet().toList();
+          final postIds = data.map((e) => e['id']).toList();
+
+          // 2. Batch Fetch Profiles (Optimization)
+          final profilesData = await _supabase
+              .from('profiles')
+              .select()
+              .filter('id', 'in', userIds);
+
+          final profilesMap = {
+            for (var p in profilesData) p['id'] as String: p,
+          };
+
+          // 3. Batch Fetch "My Likes" (To see which posts I already liked)
+          Set<String> myLikedPostIds = {};
+          if (myId != null) {
+            final myLikesData = await _supabase
+                .from('post_likes')
+                .select('post_id')
+                .eq('user_id', myId)
+                .filter('post_id', 'in', postIds);
+
+            myLikedPostIds = myLikesData
+                .map((e) => e['post_id'] as String)
+                .toSet();
+          }
+
+          // 4. Process each post to get Counts and Merge Data
+          final postsFuture = data.map((post) async {
+            final userId = post['user_id'];
+            final postId = post['id'];
+            final profile = profilesMap[userId];
+
+            // --- FIX IS HERE ---
+            // .count() returns an int directly, not an object
+            final likeCount = await _supabase
+                .from('post_likes')
+                .count(CountOption.exact)
+                .eq('post_id', postId);
+
+            final commentCount = await _supabase
+                .from('comments')
+                .count(CountOption.exact)
+                .eq('post_id', postId);
+
+            // Merge everything into the map
+            final newMap = Map<String, dynamic>.from(post);
+            newMap['profiles'] = profile ?? {};
+
+            // Assign the int directly
+            newMap['likes_count'] = likeCount;
+            newMap['comments_count'] = commentCount;
+            newMap['is_liked'] = myLikedPostIds.contains(postId);
+
+            return Post.fromMap(newMap);
+          });
+
+          return await Future.wait(postsFuture);
         });
-      });
-    }
-  }
-
-  // --- LOGIC SEARCH FILTER ---
-  List<Map<String, dynamic>> get _filteredPosts {
-    if (_searchQuery.isEmpty) return _posts;
-    return _posts.where((post) {
-      final content = post['content'].toString().toLowerCase();
-      final name = post['name'].toString().toLowerCase();
-      final query = _searchQuery.toLowerCase();
-      return content.contains(query) || name.contains(query);
-    }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.dark);
-
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      body: Column(
-        children: [
-          // 1. FIXED HEADER
-          _buildHeader(),
+      appBar: AppBar(
+        title: const Text(
+          "Timeline",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: AppColors.textMain,
+          ),
+        ),
+        backgroundColor: Colors.white,
+        elevation: 0,
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 16.0),
+            // Clickable Profile Avatar
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const ProfileScreen(),
+                  ),
+                );
+              },
+              borderRadius: BorderRadius.circular(16),
+              child: FutureBuilder<String?>(
+                future: _getCurrentUserAvatar(),
+                builder: (context, snapshot) {
+                  final avatarUrl = snapshot.data;
 
-          // 2. SCROLLABLE CONTENT
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: _handleRefresh,
-              color: AppColors.textMain,
-              backgroundColor: Colors.white,
-              notificationPredicate: (notification) => notification.depth == 0,
-              child: CustomScrollView(
-                physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
-                slivers: [
-                  const SliverPadding(padding: EdgeInsets.only(top: 10)),
-
-                  if (_isLoading)
-                    // STATE: LOADING (Skeleton)
-                    SliverList(
-                      delegate: SliverChildBuilderDelegate(
-                        (context, index) => const PostSkeleton(),
-                        childCount: 5,
-                      ),
-                    )
-                  else if (_filteredPosts.isEmpty)
-                    // STATE: EMPTY
-                    SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: _buildEmptyState(),
-                    )
-                  else
-                    // STATE: LIST DATA
-                    SliverPadding(
-                      padding: const EdgeInsets.only(bottom: 120),
-                      sliver: SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) {
-                            final post = _filteredPosts[index];
-                            return PostCard(
-                              data: post,
-                              // --- DELETE ---
-                              onDelete: () {
-                                setState(() {
-                                  _posts.removeWhere((p) => p['id'] == post['id']);
-                                });
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text("Post deleted"), duration: Duration(seconds: 1)),
-                                );
-                              },
-                              // --- EDIT ---
-                              onEdit: () {
-                                showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (context) => EditPostSheet(
-                                    initialContent: post['content'],
-                                    onSave: (newContent) {
-                                      setState(() {
-                                        final idx = _posts.indexWhere((p) => p['id'] == post['id']);
-                                        if (idx != -1) _posts[idx]['content'] = newContent;
-                                      });
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(content: Text("Post updated successfully")),
-                                      );
-                                    },
-                                  ),
-                                );
-                              },
-                              // --- REPORT (POPUP BARU) ---
-                              onReport: () {
-                                showModalBottomSheet(
-                                  context: context,
-                                  isScrollControlled: true,
-                                  backgroundColor: Colors.transparent,
-                                  builder: (context) => const ReportPostSheet(),
-                                );
-                              },
-                            );
-                          },
-                          childCount: _filteredPosts.length,
-                        ),
-                      ),
+                  // Placeholder Widget
+                  Widget placeholderMsg = CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                    child: const Icon(
+                      Icons.person,
+                      size: 20,
+                      color: AppColors.primary,
                     ),
-                ],
+                  );
+
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return placeholderMsg;
+                  }
+
+                  if (avatarUrl != null && avatarUrl.isNotEmpty) {
+                    return CircleAvatar(
+                      radius: 16,
+                      backgroundColor: Colors.grey[200],
+                      backgroundImage: NetworkImage(avatarUrl),
+                    );
+                  } else {
+                    return placeholderMsg;
+                  }
+                },
               ),
             ),
           ),
         ],
       ),
 
-      // FAB
+      body: StreamBuilder<List<Post>>(
+        stream: _getPostsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(child: Text("Error: ${snapshot.error}"));
+          }
+
+          final posts = snapshot.data ?? [];
+
+          if (posts.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.forum_outlined,
+                    size: 60,
+                    color: Colors.grey.shade300,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    "No posts yet. Be the first!",
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.separated(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
+            itemCount: posts.length,
+            separatorBuilder: (context, index) => const SizedBox(height: 16),
+            itemBuilder: (context, index) {
+              return PostCard(post: posts[index]);
+            },
+          );
+        },
+      ),
+
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(bottom: 90),
+        padding: const EdgeInsets.only(bottom: 90.0),
         child: FloatingActionButton.extended(
           onPressed: () {
             showModalBottomSheet(
               context: context,
               isScrollControlled: true,
               backgroundColor: Colors.transparent,
-              builder: (context) => CreatePostSheet(onSubmit: _handleCreatePost),
+              builder: (_) => const CreatePostSheet(),
             );
           },
-          backgroundColor: AppColors.textMain,
-          elevation: 4,
-          highlightElevation: 8,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          icon: const Icon(Icons.edit_note_rounded, color: Colors.white),
+          backgroundColor: AppColors.primary,
+          icon: const Icon(Icons.add, color: Colors.white),
           label: const Text(
-            "New Post",
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+            "Post",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
       ),
     );
   }
-
-  // Helper Widget: Header
-  Widget _buildHeader() {
-    return Container(
-      color: const Color(0xFFF8FAFC),
-      padding: EdgeInsets.only(
-        top: MediaQuery.of(context).padding.top + 10,
-        bottom: 16,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-            child: const Text(
-              "Community",
-              style: TextStyle(
-                color: AppColors.textMain,
-                fontWeight: FontWeight.w800,
-                fontSize: 24,
-                letterSpacing: -0.5,
-              ),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            child: Container(
-              height: 52,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.shadow.withValues(alpha: 0.06),
-                    blurRadius: 16,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: TextField(
-                onChanged: (value) => setState(() => _searchQuery = value),
-                style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textMain),
-                decoration: InputDecoration(
-                  hintText: "Search discussions...",
-                  hintStyle: TextStyle(
-                    color: AppColors.textMuted.withValues(alpha: 0.5),
-                    fontWeight: FontWeight.w500,
-                  ),
-                  prefixIcon: Icon(Icons.search_rounded, color: AppColors.textMuted.withValues(alpha: 0.5), size: 24),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // Helper Widget: Empty State
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.search_off_rounded, size: 60, color: AppColors.textMuted.withValues(alpha: 0.3)),
-          const SizedBox(height: 16),
-          Text(
-            "No posts found",
-            style: TextStyle(
-              color: AppColors.textMuted.withValues(alpha: 0.7),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
-
-// --- WIDGET SKELETON (Tetap) ---
-class PostSkeleton extends StatefulWidget {
-  const PostSkeleton({super.key});
-
-  @override
-  State<PostSkeleton> createState() => _PostSkeletonState();
-}
-
-class _PostSkeletonState extends State<PostSkeleton> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _animation;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat(reverse: true);
-    _animation = Tween<double>(begin: 0.4, end: 1.0).animate(_controller);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return FadeTransition(
-      opacity: _animation,
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(width: 42, height: 42, decoration: BoxDecoration(color: Colors.grey[200], shape: BoxShape.circle)),
-                const SizedBox(width: 12),
-                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Container(width: 100, height: 14, color: Colors.grey[200]),
-                  const SizedBox(height: 6),
-                  Container(width: 60, height: 12, color: Colors.grey[100]),
-                ]),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(width: double.infinity, height: 14, color: Colors.grey[100]),
-            const SizedBox(height: 8),
-            Container(width: 200, height: 14, color: Colors.grey[100]),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- DATA DUMMY ---
-final List<Map<String, dynamic>> initialPosts = [
-  {
-    "id": "1",
-    "userId": "user_001",
-    "name": "Sarah Jenkins",
-    "avatar": "https://i.pravatar.cc/150?u=a042581f4e29026024d",
-    "isPro": true,
-    "time": "2 hrs ago",
-    "content": "Just finished the Pomodoro technique for 4 hours straight! 🍅",
-    "likes": 24,
-    "comments": 5,
-    "isLiked": false,
-  },
-  {
-    "id": "2",
-    "userId": "user_999",
-    "name": "David Chen",
-    "avatar": "https://i.pravatar.cc/150?u=a042581f4e29026704d",
-    "isPro": false,
-    "time": "5 hrs ago",
-    "content": "Does anyone have good resources for learning Flutter Advanced animations?",
-    "likes": 12,
-    "comments": 8,
-    "isLiked": true,
-  },
-];

@@ -8,7 +8,7 @@ import 'core/constant/app_secrets.dart';
 import 'features/onboarding/presentation/splash_screen.dart';
 // 1. ADD THIS IMPORT (Make sure the path matches your project structure)
 import 'features/dashboard/presentation/main_navigation_screen.dart';
-
+import 'core/services/presence_service.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import this
 
 void main() async {
@@ -25,8 +25,40 @@ void main() async {
   runApp(const MiraApp());
 }
 
-class MiraApp extends StatelessWidget {
+class MiraApp extends StatefulWidget {
   const MiraApp({super.key});
+
+  @override
+  State<MiraApp> createState() => _MiraAppState();
+}
+
+class _MiraAppState extends State<MiraApp> {
+  @override
+  void initState() {
+    super.initState();
+    _initPresence();
+  }
+
+  // 🔥 Step 2: Ignite Presence Service
+  void _initPresence() async {
+    // Wait for Supabase Auth to settle
+    await Future.delayed(const Duration(seconds: 1));
+
+    // 1. Connect if already logged in
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session != null) {
+      await PresenceService().connect();
+    }
+
+    // 2. Listen for future Login/Logout events
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn) {
+        PresenceService().connect();
+      } else if (data.event == AuthChangeEvent.signedOut) {
+        PresenceService().disconnect();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +102,6 @@ class MiraApp extends StatelessWidget {
 
       home: const SplashScreen(),
 
-      // 2. ADD THIS ROUTES BLOCK
       routes: {'/home': (context) => const MainNavigationScreen()},
     );
   }

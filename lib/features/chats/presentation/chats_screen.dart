@@ -9,7 +9,6 @@ import '../../../core/constant/app_colors.dart';
 import '../data/chat_user_model.dart';
 import 'chat_detail_screen.dart';
 
-// --- NEW IMPORTS ---
 import 'search_users_screen.dart';
 import 'friend_requests_screen.dart';
 import 'contacts_screen.dart';
@@ -40,6 +39,15 @@ class _ChatsScreenState extends State<ChatsScreen> {
         });
   }
 
+  // 1. NEW: Stream to count pending requests
+  Stream<List<Map<String, dynamic>>> _getPendingRequestsStream() {
+    final myUserId = _supabase.auth.currentUser!.id;
+    return _supabase
+        .from('friendships')
+        .stream(primaryKey: ['id'])
+        .eq('receiver_id', myUserId); // Listen to all requests sent to me
+  }
+
   void _deleteChat(String roomId) async {
     await _supabase.from('chat_rooms').delete().eq('id', roomId);
     if (mounted) {
@@ -60,15 +68,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
-
-      // --- FIX: PUSH FAB UP ABOVE NAVBAR ---
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
       floatingActionButton: Padding(
-        padding: const EdgeInsets.only(
-          bottom: 90.0,
-        ), // Added padding to clear Navbar
+        padding: const EdgeInsets.only(bottom: 90.0),
         child: FloatingActionButton(
-          heroTag: "search_people_fab", // Unique tag to prevent hero errors
+          heroTag: "search_people_fab",
           backgroundColor: AppColors.textMain,
           elevation: 4,
           shape: RoundedRectangleBorder(
@@ -88,7 +92,6 @@ class _ChatsScreenState extends State<ChatsScreen> {
         bottom: false,
         child: Column(
           children: [
-            // HEADER
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
               child: Column(
@@ -123,18 +126,52 @@ class _ChatsScreenState extends State<ChatsScreen> {
                         ),
                       ),
 
-                      // Friend Requests (Bell)
-                      IconButton(
-                        icon: const Icon(
-                          Icons.notifications_none_rounded,
-                          size: 28,
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => const FriendRequestsScreen(),
-                            ),
+                      // 2. UPDATED: Friend Requests (Bell with Badge)
+                      StreamBuilder<List<Map<String, dynamic>>>(
+                        stream: _getPendingRequestsStream(),
+                        builder: (context, snapshot) {
+                          // Filter explicitly for 'pending'
+                          final pendingCount = snapshot.hasData
+                              ? snapshot.data!
+                                    .where((f) => f['status'] == 'pending')
+                                    .length
+                              : 0;
+
+                          return Stack(
+                            alignment: Alignment.topRight,
+                            children: [
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.notifications_none_rounded,
+                                  size: 28,
+                                ),
+                                onPressed: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const FriendRequestsScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                              if (pendingCount > 0)
+                                Positioned(
+                                  right: 8,
+                                  top: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(4),
+                                    decoration: const BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 10,
+                                      minHeight: 10,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           );
                         },
                       ),
@@ -178,9 +215,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                   final rooms = snapshot.data!;
                   return ListView.builder(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.only(
-                      bottom: 120,
-                    ), // Extra padding for scrolling behind FAB
+                    padding: const EdgeInsets.only(bottom: 120),
                     itemCount: rooms.length,
                     itemBuilder: (context, index) {
                       final room = rooms[index];
@@ -272,7 +307,11 @@ class _ChatsScreenState extends State<ChatsScreen> {
   }
 }
 
-// SMART TILE WIDGET (Kept identical for stability)
+// ... (imports remain the same)
+
+// ... (keep ChatsScreen class the same until _ChatRoomTile)
+
+// --- UPDATE STARTS HERE IN _ChatRoomTile ---
 class _ChatRoomTile extends StatefulWidget {
   final String roomId;
   final String participant1;
@@ -321,6 +360,7 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
     }
   }
 
+  // ... (keep _listenToLastMessage and _fetchUnreadCount same) ...
   void _listenToLastMessage() {
     Supabase.instance.client
         .from('messages')
@@ -354,6 +394,13 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
     final nickname = _profile!['nickname'] as String?;
     final name = fullName ?? nickname ?? "Unknown User";
 
+    // 1. GET AVATAR URL
+    final avatarUrl = _profile!['avatar_url'] as String?;
+
+    final otherUserId = (widget.participant1 == myId)
+        ? widget.participant2
+        : widget.participant1;
+
     if (widget.searchQuery.isNotEmpty &&
         !name.toLowerCase().contains(widget.searchQuery.toLowerCase())) {
       return const SizedBox.shrink();
@@ -385,13 +432,17 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
         onTap: () {
           final chatUser = ChatUser(
             name: name,
-            avatarUrl: widget.roomId,
-            isOnline: true,
+            avatarUrl: widget.roomId, // KEEP: Used for Room ID logic
+            isOnline: false,
           );
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ChatDetailScreen(user: chatUser),
+              builder: (context) => ChatDetailScreen(
+                user: chatUser,
+                otherUserId: otherUserId,
+                profileImage: avatarUrl, // 2. PASS IMAGE TO DETAIL SCREEN
+              ),
             ),
           );
         },
@@ -406,16 +457,22 @@ class _ChatRoomTileState extends State<_ChatRoomTile> {
                     backgroundColor: _unreadCount > 0
                         ? AppColors.primary.withValues(alpha: 0.1)
                         : Colors.grey.shade200,
-                    child: Text(
-                      name.isNotEmpty ? name[0].toUpperCase() : "?",
-                      style: TextStyle(
-                        color: _unreadCount > 0
-                            ? AppColors.primary
-                            : Colors.grey.shade600,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 22,
-                      ),
-                    ),
+                    // 3. SHOW IMAGE IN LIST
+                    backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
+                        ? NetworkImage(avatarUrl)
+                        : null,
+                    child: (avatarUrl == null || avatarUrl.isEmpty)
+                        ? Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : "?",
+                            style: TextStyle(
+                              color: _unreadCount > 0
+                                  ? AppColors.primary
+                                  : Colors.grey.shade600,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 22,
+                            ),
+                          )
+                        : null,
                   ),
                 ],
               ),
