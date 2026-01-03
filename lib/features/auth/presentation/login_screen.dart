@@ -17,6 +17,8 @@ import 'register_screen.dart';
 import 'forgot_password_screen.dart';
 import '../../dashboard/presentation/main_navigation_screen.dart';
 
+import 'complete_profile_screen.dart'; 
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -61,8 +63,10 @@ class _LoginScreenState extends State<LoginScreen>
       duration: const Duration(milliseconds: 1000),
     );
 
-    _slideAnimation =
-        Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.2), 
+      end: Offset.zero
+    ).animate(
       CurvedAnimation(parent: _formController, curve: Curves.easeOutCubic),
     );
 
@@ -106,6 +110,57 @@ class _LoginScreenState extends State<LoginScreen>
     );
   }
 
+  Future<void> _handlePostLoginNavigation() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final data = await Supabase.instance.client
+          .from('profiles')
+          .select('''
+            nickname, 
+            age, 
+            gender, 
+            location, 
+            occupation, 
+            institution_name, 
+            referral_source
+          ''')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+
+      if (data == null ||
+          data['nickname'] == null ||
+          data['age'] == null ||
+          data['gender'] == null ||
+          data['location'] == null ||
+          data['occupation'] == null ||
+          data['institution_name'] == null ||
+          data['referral_source'] == null) {
+        
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const CompleteProfileScreen()),
+        );
+      } else {
+        _navigateToDashboard();
+      }
+    } catch (e) {
+      debugPrint("Error checking user profile: $e");
+      _navigateToDashboard(); 
+    }
+  }
+
+  void _navigateToDashboard() {
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
+      (route) => false,
+    );
+  }
+
   Future<void> _handleLogin() async {
     final email = _emailController.text.trim();
     final password = _passwordController.text.trim();
@@ -124,21 +179,20 @@ class _LoginScreenState extends State<LoginScreen>
     try {
       final authRepo = AuthRepository();
       await authRepo.signIn(email: email, password: password);
-      final String? isThisUserEnabled =
-          await _storage.read(key: 'bio_enabled_$email');
-      final String? isThisUserIgnored =
-          await _storage.read(key: 'bio_ignored_$email');
+      
+      final String? isThisUserEnabled = await _storage.read(key: 'bio_enabled_$email');
+      final String? isThisUserIgnored = await _storage.read(key: 'bio_ignored_$email');
 
       if (mounted) {
         _showSnackBar("Welcome back!", isError: false);
+        
         if (isThisUserEnabled == 'true') {
           await _storage.write(key: 'bio_pass_$email', value: password);
           await _storage.write(key: 'last_bio_user', value: email);
-
-          _navigateToDashboard();
+          await _handlePostLoginNavigation(); 
         } else {
           if (isThisUserIgnored == 'true') {
-            _navigateToDashboard();
+            await _handlePostLoginNavigation();
           } else {
             await _askToEnableBiometrics(email, password);
           }
@@ -160,12 +214,13 @@ class _LoginScreenState extends State<LoginScreen>
   Future<void> _askToEnableBiometrics(String email, String password) async {
     final bool canCheckBiometrics = await auth.canCheckBiometrics;
     if (!canCheckBiometrics) {
-      _navigateToDashboard();
+      await _handlePostLoginNavigation();
       return;
     }
 
     if (!mounted) return;
     bool doNotAskAgain = false;
+    
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -174,8 +229,7 @@ class _LoginScreenState extends State<LoginScreen>
           builder: (context, setStateDialog) {
             return AlertDialog(
               title: const Text("Enable Biometric Login?"),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -199,11 +253,9 @@ class _LoginScreenState extends State<LoginScreen>
                           child: Checkbox(
                             value: doNotAskAgain,
                             activeColor: AppColors.primary,
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(4)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
                             onChanged: (val) {
-                              setStateDialog(
-                                  () => doNotAskAgain = val ?? false);
+                              setStateDialog(() => doNotAskAgain = val ?? false);
                             },
                           ),
                         ),
@@ -211,8 +263,7 @@ class _LoginScreenState extends State<LoginScreen>
                         const Expanded(
                           child: Text(
                             "Don't ask me again for this account",
-                            style: TextStyle(
-                                fontSize: 12, color: AppColors.textMuted),
+                            style: TextStyle(fontSize: 12, color: AppColors.textMuted),
                           ),
                         ),
                       ],
@@ -224,51 +275,38 @@ class _LoginScreenState extends State<LoginScreen>
                 TextButton(
                   onPressed: () async {
                     Navigator.pop(context);
-
                     if (doNotAskAgain) {
-                      await _storage.write(
-                          key: 'bio_ignored_$email', value: 'true');
+                      await _storage.write(key: 'bio_ignored_$email', value: 'true');
                     }
-
-                    _navigateToDashboard();
+                    if (mounted) await _handlePostLoginNavigation();
                   },
-                  child:
-                      const Text("Skip", style: TextStyle(color: Colors.grey)),
+                  child: const Text("Skip", style: TextStyle(color: Colors.grey)),
                 ),
-
                 TextButton(
                   onPressed: () async {
                     Navigator.pop(context);
-
                     try {
                       bool didAuthenticate = await auth.authenticate(
-                        localizedReason:
-                            'Authenticate to enable biometric login',
+                        localizedReason: 'Authenticate to enable biometric login',
                         options: const AuthenticationOptions(stickyAuth: true),
                       );
 
                       if (didAuthenticate) {
-                        await _storage.write(
-                            key: 'bio_enabled_$email', value: 'true');
-                        await _storage.write(
-                            key: 'bio_pass_$email', value: password);
+                        await _storage.write(key: 'bio_enabled_$email', value: 'true');
+                        await _storage.write(key: 'bio_pass_$email', value: password);
                         await _storage.delete(key: 'bio_ignored_$email');
-                        await _storage.write(
-                            key: 'last_bio_user', value: email);
+                        await _storage.write(key: 'last_bio_user', value: email);
 
                         if (mounted) {
-                          _showSnackBar("Biometric login enabled!",
-                              isError: false);
+                          _showSnackBar("Biometric login enabled!", isError: false);
                         }
                       }
                     } catch (e) {
                       debugPrint("Bio setup error: $e");
                     }
-
-                    _navigateToDashboard();
+                    if (mounted) await _handlePostLoginNavigation();
                   },
-                  child: const Text("Yes, Enable",
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: const Text("Yes, Enable", style: TextStyle(fontWeight: FontWeight.bold)),
                 ),
               ],
             );
@@ -282,17 +320,14 @@ class _LoginScreenState extends State<LoginScreen>
     String? lastUserEmail = await _storage.read(key: 'last_bio_user');
 
     if (lastUserEmail == null) {
-      _showSnackBar(
-          'No biometric account linked yet. Please login manually first.');
+      _showSnackBar('No biometric account linked yet. Please login manually first.');
       return;
     }
 
-    String? isEnabled =
-        await _storage.read(key: 'bio_enabled_$lastUserEmail');
+    String? isEnabled = await _storage.read(key: 'bio_enabled_$lastUserEmail');
 
     if (isEnabled != 'true') {
-      _showSnackBar(
-          'Biometrics disabled for $lastUserEmail. Please login manually.');
+      _showSnackBar('Biometrics disabled for $lastUserEmail. Please login manually.');
       return;
     }
 
@@ -313,51 +348,42 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (didAuthenticate) {
         setState(() => _isLoading = true);
-        final savedPassword =
-            await _storage.read(key: 'bio_pass_$lastUserEmail');
+        final savedPassword = await _storage.read(key: 'bio_pass_$lastUserEmail');
 
         if (savedPassword != null) {
           final authRepo = AuthRepository();
-          await authRepo.signIn(
-              email: lastUserEmail, password: savedPassword);
+          await authRepo.signIn(email: lastUserEmail, password: savedPassword);
 
           if (mounted) {
             _showSnackBar("Login Successful via Biometrics!", isError: false);
-            _navigateToDashboard();
+            await _handlePostLoginNavigation();
           }
         } else {
           _showSnackBar("Credentials missing. Please login manually.");
+          setState(() => _isLoading = false);
         }
       }
     } on AuthException catch (e) {
       _showSnackBar("Login failed: ${e.message}");
+      setState(() => _isLoading = false);
     } catch (e) {
       _showSnackBar("Biometric Error: $e");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _navigateToDashboard() {
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(builder: (context) => const MainNavigationScreen()),
-      (route) => false,
-    );
+      setState(() => _isLoading = false);
+    } 
   }
 
   Future<void> _googleSignIn() async {
     setState(() => _isLoading = true);
     try {
-      const webClientId =
-          '95756928282-jnmgsvcusb26oql90mugkepbqe0qije3.apps.googleusercontent.com';
+      const webClientId = '95756928282-jnmgsvcusb26oql90mugkepbqe0qije3.apps.googleusercontent.com';
 
-      final GoogleSignIn googleSignIn =
-          GoogleSignIn(serverClientId: webClientId);
-
+      final GoogleSignIn googleSignIn = GoogleSignIn(serverClientId: webClientId);
       final googleUser = await googleSignIn.signIn();
 
-      if (googleUser == null) return;
+      if (googleUser == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       final googleAuth = await googleUser.authentication;
       final accessToken = googleAuth.accessToken;
@@ -373,7 +399,7 @@ class _LoginScreenState extends State<LoginScreen>
 
       if (mounted) {
         _showSnackBar("Google Login Successful!", isError: false);
-        _navigateToDashboard();
+        await _handlePostLoginNavigation();
       }
     } catch (error) {
       _showSnackBar("Google Login Failed: $error");
@@ -381,6 +407,7 @@ class _LoginScreenState extends State<LoginScreen>
       if (mounted) setState(() => _isLoading = false);
     }
   }
+
   @override
   Widget build(BuildContext context) {
     SystemChrome.setSystemUIOverlayStyle(
@@ -400,7 +427,6 @@ class _LoginScreenState extends State<LoginScreen>
           RepaintBoundary(
             child: _buildAnimatedBackground(size),
           ),
-
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -447,14 +473,12 @@ class _LoginScreenState extends State<LoginScreen>
                             textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: 13,
-                              color:
-                                  AppColors.textMuted.withValues(alpha: 0.8),
+                              color: AppColors.textMuted.withValues(alpha: 0.8),
                             ),
                           ),
                         ],
                       ),
                     ),
-
                     const SizedBox(height: 24),
                     SlideTransition(
                       position: _slideAnimation,
@@ -473,8 +497,7 @@ class _LoginScreenState extends State<LoginScreen>
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppColors.primary
-                                    .withValues(alpha: 0.1),
+                                color: AppColors.primary.withValues(alpha: 0.1),
                                 blurRadius: 40,
                                 offset: const Offset(0, 20),
                                 spreadRadius: -10,
@@ -493,23 +516,19 @@ class _LoginScreenState extends State<LoginScreen>
                                 ),
                               ),
                               const SizedBox(height: 20),
-
                               MiraTextField(
                                 controller: _emailController,
                                 hintText: "Email Address",
                                 icon: Icons.email_outlined,
                                 keyboardType: TextInputType.emailAddress,
                               ),
-
                               const SizedBox(height: 16),
-
                               MiraTextField(
                                 controller: _passwordController,
                                 hintText: "Password",
                                 icon: Icons.lock_outline,
                                 isPassword: true,
                               ),
-
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(
@@ -532,9 +551,7 @@ class _LoginScreenState extends State<LoginScreen>
                                   ),
                                 ),
                               ),
-
                               const SizedBox(height: 20),
-
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
@@ -553,8 +570,7 @@ class _LoginScreenState extends State<LoginScreen>
                                       color: Colors.white,
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
-                                        color: AppColors.primary
-                                            .withValues(alpha: 0.2),
+                                        color: AppColors.primary.withValues(alpha: 0.2),
                                       ),
                                     ),
                                     child: IconButton(
@@ -563,19 +579,17 @@ class _LoginScreenState extends State<LoginScreen>
                                         size: 28,
                                         color: AppColors.primary,
                                       ),
-                                      onPressed: _isLoading 
-                                          ? null 
+                                      onPressed: _isLoading
+                                          ? null
                                           : _authenticateWithBiometrics,
                                       tooltip: "Login with Fingerprint",
                                     ),
                                   ),
                                 ],
                               ),
-
                               const SizedBox(height: 24),
                               const _DividerWithText(text: "or"),
                               const SizedBox(height: 20),
-
                               SizedBox(
                                 width: double.infinity,
                                 height: 50,
@@ -583,16 +597,14 @@ class _LoginScreenState extends State<LoginScreen>
                                   style: OutlinedButton.styleFrom(
                                     backgroundColor: Colors.white,
                                     side: BorderSide(
-                                      color: AppColors.textMuted
-                                          .withValues(alpha: 0.2),
+                                      color: AppColors.textMuted.withValues(alpha: 0.2),
                                     ),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
                                     elevation: 0,
                                   ),
-                                  onPressed:
-                                      _isLoading ? null : _googleSignIn,
+                                  onPressed: _isLoading ? null : _googleSignIn,
                                   child: Row(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
@@ -619,9 +631,7 @@ class _LoginScreenState extends State<LoginScreen>
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 24),
-
                     FadeTransition(
                       opacity: _fadeAnimation,
                       child: Row(
@@ -636,8 +646,7 @@ class _LoginScreenState extends State<LoginScreen>
                               Navigator.pushReplacement(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) =>
-                                      const RegisterScreen(),
+                                  builder: (context) => const RegisterScreen(),
                                 ),
                               );
                             },
@@ -719,8 +728,7 @@ class _DividerWithText extends StatelessWidget {
     return Row(
       children: [
         Expanded(
-          child: Divider(
-              color: AppColors.textMuted.withValues(alpha: 0.2)),
+          child: Divider(color: AppColors.textMuted.withValues(alpha: 0.2)),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -733,8 +741,7 @@ class _DividerWithText extends StatelessWidget {
           ),
         ),
         Expanded(
-          child: Divider(
-              color: AppColors.textMuted.withValues(alpha: 0.2)),
+          child: Divider(color: AppColors.textMuted.withValues(alpha: 0.2)),
         ),
       ],
     );

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../../core/constant/app_colors.dart';
+import '../../../core/constant/app_colors.dart'; // Sesuaikan path
 
 class ProfileMenuItem extends StatelessWidget {
   final String title;
@@ -17,7 +17,6 @@ class ProfileMenuItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Tentukan warna dasar agar kode UI lebih bersih
     final Color baseColor = isDestructive ? AppColors.error : AppColors.primary;
     final Color textColor = isDestructive ? AppColors.error : AppColors.textMain;
 
@@ -31,23 +30,15 @@ class ProfileMenuItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
           child: Row(
             children: [
-              // 1. Icon Container
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: baseColor.withValues(alpha: 0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icon,
-                  size: 20,
-                  color: baseColor,
-                ),
+                child: Icon(icon, size: 20, color: baseColor),
               ),
-
               const SizedBox(width: 16),
-
-              // 2. Title Text
               Expanded(
                 child: Text(
                   title,
@@ -59,11 +50,12 @@ class ProfileMenuItem extends StatelessWidget {
                   ),
                 ),
               ),
-              Icon(
-                Icons.chevron_right_rounded,
-                size: 24,
-                color: AppColors.textMuted.withValues(alpha: 0.4),
-              ),
+              if (!isDestructive)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 24,
+                  color: AppColors.textMuted.withValues(alpha: 0.4),
+                ),
             ],
           ),
         ),

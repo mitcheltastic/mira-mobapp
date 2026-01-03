@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
 class SecuritySettingsScreen extends StatefulWidget {
@@ -20,6 +21,63 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   bool _obscureConfirm = true;
 
   bool _isLoading = false;
+  bool _isSocialLogin = false; // 1. Track if user is Google/Apple/etc
+
+  @override
+  void initState() {
+    super.initState();
+    _checkLoginProvider();
+  }
+
+  // 2. CHECK PROVIDER LOGIC
+  void _checkLoginProvider() {
+    final user = Supabase.instance.client.auth.currentUser;
+    // 'provider' is usually inside app_metadata.
+    // If it's 'email', they have a password. If 'google', they don't.
+    final provider = user?.appMetadata['provider'] ?? 'email';
+
+    if (provider != 'email') {
+      setState(() {
+        _isSocialLogin = true;
+      });
+
+      // 3. SHOW POP-UP NOTIFICATION
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showSocialLoginDialog(provider);
+      });
+    }
+  }
+
+  void _showSocialLoginDialog(String provider) {
+    showDialog(
+      context: context,
+      barrierDismissible: false, // Force them to acknowledge
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          title: const Text("Action Not Available"),
+          content: Text(
+            "You are logged in via ${provider[0].toUpperCase()}${provider.substring(1)}. \n\nYou cannot change your password here because your account is managed by your social provider.",
+            style: const TextStyle(color: AppColors.textMuted, height: 1.5),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close dialog
+                // Optional: Navigator.pop(context); // Go back to previous screen?
+              },
+              child: const Text(
+                "Understood",
+                style: TextStyle(color: AppColors.primary),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   void dispose() {
@@ -29,9 +87,10 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     super.dispose();
   }
 
-  // --- LOGIC GANTI PASSWORD ---
   Future<void> _changePassword() async {
-    // 1. Validasi Input Kosong
+    // Safety check
+    if (_isSocialLogin) return;
+
     if (_currentPassController.text.isEmpty ||
         _newPassController.text.isEmpty ||
         _confirmPassController.text.isEmpty) {
@@ -39,32 +98,51 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       return;
     }
 
-    // 2. Validasi Match
     if (_newPassController.text != _confirmPassController.text) {
       _showSnackBar("New passwords do not match.", isError: true);
       return;
     }
 
-    // 3. Validasi Panjang (Contoh)
-    if (_newPassController.text.length < 8) {
-      _showSnackBar("Password must be at least 8 characters.", isError: true);
+    if (_newPassController.text.length < 6) {
+      _showSnackBar("Password must be at least 6 characters.", isError: true);
       return;
     }
 
-    // 4. Proses Simpan
     setState(() => _isLoading = true);
-    await Future.delayed(const Duration(seconds: 2)); // Simulasi API
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      _showSnackBar("Password changed successfully!", isError: false);
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null || user.email == null) {
+        _showSnackBar("User not found. Please login again.", isError: true);
+        return;
+      }
 
-      // Opsional: Clear field setelah sukses
-      _currentPassController.clear();
-      _newPassController.clear();
-      _confirmPassController.clear();
+      await Supabase.instance.client.auth.signInWithPassword(
+        email: user.email!,
+        password: _currentPassController.text,
+      );
 
-      Navigator.pop(context);
+      await Supabase.instance.client.auth.updateUser(
+        UserAttributes(password: _newPassController.text),
+      );
+
+      if (mounted) {
+        _showSnackBar("Password changed successfully!", isError: false);
+        _currentPassController.clear();
+        _newPassController.clear();
+        _confirmPassController.clear();
+        Navigator.pop(context);
+      }
+    } on AuthException catch (e) {
+      if (mounted) {
+        _showSnackBar(e.message, isError: true);
+      }
+    } catch (e) {
+      if (mounted) {
+        _showSnackBar("An error occurred: $e", isError: true);
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -84,27 +162,29 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC), // Background bersih
+        backgroundColor: const Color(0xFFF8FAFC),
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                color: AppColors.textMain, size: 20),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: AppColors.textMain,
+              size: 20,
+            ),
             onPressed: () => Navigator.pop(context),
           ),
           centerTitle: true,
           title: const Text(
             "Security",
             style: TextStyle(
-                color: AppColors.textMain,
-                fontWeight: FontWeight.w800,
-                fontSize: 18),
+              color: AppColors.textMain,
+              fontWeight: FontWeight.w800,
+              fontSize: 18,
+            ),
           ),
         ),
-        // Bottom Bar untuk Tombol Save (Agar selalu terlihat)
         bottomNavigationBar: _buildBottomBar(),
-
         body: SingleChildScrollView(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           physics: const BouncingScrollPhysics(),
@@ -114,19 +194,23 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
               const Text(
                 "Change Password",
                 style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textMain),
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMain,
+                ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                "Your new password must be different from previously used passwords.",
-                style: TextStyle(
-                    fontSize: 14, color: AppColors.textMuted, height: 1.5),
+              Text(
+                _isSocialLogin
+                    ? "This feature is unavailable because you are logged in via a social account."
+                    : "Your new password must be different from previously used passwords.",
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: AppColors.textMuted,
+                  height: 1.5,
+                ),
               ),
               const SizedBox(height: 24),
-
-              // --- FORM SECTION ---
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -140,50 +224,49 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                     ),
                   ],
                 ),
-                child: Column(
-                  children: [
-                    // CURRENT PASSWORD
-                    _BuildPasswordField(
-                      label: "Current Password",
-                      controller: _currentPassController,
-                      obscureText: _obscureCurrent,
-                      onToggleVisibility: () =>
-                          setState(() => _obscureCurrent = !_obscureCurrent),
-                    ),
-
-                    const SizedBox(height: 10),
-                    const Divider(color: Color(0xFFF1F5F9)),
-                    const SizedBox(height: 20),
-
-                    // NEW PASSWORD
-                    _BuildPasswordField(
-                      label: "New Password",
-                      controller: _newPassController,
-                      obscureText: _obscureNew,
-                      onToggleVisibility: () =>
-                          setState(() => _obscureNew = !_obscureNew),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // PASSWORD REQUIREMENTS
-                    _buildRequirementItem("Must be at least 8 characters"),
-                    _buildRequirementItem(
-                        "Must contain one special character"),
-
-                    const SizedBox(height: 20),
-
-                    // CONFIRM PASSWORD
-                    _BuildPasswordField(
-                      label: "Confirm Password",
-                      controller: _confirmPassController,
-                      obscureText: _obscureConfirm,
-                      onToggleVisibility: () => setState(
-                          () => _obscureConfirm = !_obscureConfirm),
-                    ),
-                  ],
+                child: Opacity(
+                  opacity: _isSocialLogin
+                      ? 0.5
+                      : 1.0, // Dim the form if disabled
+                  child: Column(
+                    children: [
+                      _BuildPasswordField(
+                        label: "Current Password",
+                        controller: _currentPassController,
+                        obscureText: _obscureCurrent,
+                        enabled: !_isSocialLogin, // 4. Disable input
+                        onToggleVisibility: () =>
+                            setState(() => _obscureCurrent = !_obscureCurrent),
+                      ),
+                      const SizedBox(height: 10),
+                      const Divider(color: Color(0xFFF1F5F9)),
+                      const SizedBox(height: 20),
+                      _BuildPasswordField(
+                        label: "New Password",
+                        controller: _newPassController,
+                        obscureText: _obscureNew,
+                        enabled: !_isSocialLogin, // 4. Disable input
+                        onToggleVisibility: () =>
+                            setState(() => _obscureNew = !_obscureNew),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildRequirementItem("Must be at least 6 characters"),
+                      _buildRequirementItem(
+                        "Must contain one special character",
+                      ),
+                      const SizedBox(height: 20),
+                      _BuildPasswordField(
+                        label: "Confirm Password",
+                        controller: _confirmPassController,
+                        obscureText: _obscureConfirm,
+                        enabled: !_isSocialLogin, // 4. Disable input
+                        onToggleVisibility: () =>
+                            setState(() => _obscureConfirm = !_obscureConfirm),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              // Tambahan padding bawah agar tidak tertutup keyboard/bottom bar
               const SizedBox(height: 40),
             ],
           ),
@@ -191,8 +274,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
       ),
     );
   }
-
-  // --- WIDGET BUILDERS ---
 
   Widget _buildBottomBar() {
     return Container(
@@ -212,13 +293,15 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            onPressed: _isLoading ? null : _changePassword,
+            // 5. Disable Button Logic
+            onPressed: (_isLoading || _isSocialLogin) ? null : _changePassword,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
+              // If disabled, color handles itself, but we can tweak if needed
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
-              elevation: 0, // Flat design
+              elevation: 0,
               shadowColor: AppColors.primary.withValues(alpha: 0.4),
             ),
             child: _isLoading
@@ -230,9 +313,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                       strokeWidth: 2.5,
                     ),
                   )
-                : const Text(
-                    "Change Password",
-                    style: TextStyle(
+                : Text(
+                    _isSocialLogin ? "Managed by Google" : "Change Password",
+                    style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
                       fontSize: 16,
@@ -253,8 +336,8 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           Container(
             height: 6,
             width: 6,
-            decoration: const BoxDecoration(
-              color: AppColors.success, // Indikator hijau kecil
+            decoration: BoxDecoration(
+              color: _isSocialLogin ? Colors.grey : AppColors.success,
               shape: BoxShape.circle,
             ),
           ),
@@ -275,18 +358,19 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   }
 }
 
-// --- WIDGET HELPER PASSWORD FIELD (Optimized) ---
 class _BuildPasswordField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final bool obscureText;
   final VoidCallback onToggleVisibility;
+  final bool enabled; // 6. Add enabled field
 
   const _BuildPasswordField({
     required this.label,
     required this.controller,
     required this.obscureText,
     required this.onToggleVisibility,
+    this.enabled = true, // Default to true
   });
 
   @override
@@ -306,6 +390,7 @@ class _BuildPasswordField extends StatelessWidget {
         TextField(
           controller: controller,
           obscureText: obscureText,
+          enabled: enabled, // 7. Pass to TextField
           style: const TextStyle(
             color: AppColors.textMain,
             fontWeight: FontWeight.w600,
@@ -313,9 +398,14 @@ class _BuildPasswordField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             filled: true,
-            fillColor: Colors.white,
-            prefixIcon: const Icon(Icons.lock_outline_rounded,
-                color: Color(0xFF94A3B8), size: 22),
+            fillColor: enabled
+                ? Colors.white
+                : const Color(0xFFF1F5F9), // Grey out if disabled
+            prefixIcon: const Icon(
+              Icons.lock_outline_rounded,
+              color: Color(0xFF94A3B8),
+              size: 22,
+            ),
             suffixIcon: IconButton(
               icon: Icon(
                 obscureText
@@ -324,17 +414,20 @@ class _BuildPasswordField extends StatelessWidget {
                 color: const Color(0xFF94A3B8),
                 size: 22,
               ),
-              onPressed: onToggleVisibility,
+              onPressed: enabled ? onToggleVisibility : null,
             ),
-            contentPadding:
-                const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-            // Border Logic
+            contentPadding: const EdgeInsets.symmetric(
+              vertical: 16,
+              horizontal: 20,
+            ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
-              borderSide: BorderSide(
-                color: const Color(0xFFE2E8F0), // Border abu muda
-                width: 1,
-              ),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+            ),
+            disabledBorder: OutlineInputBorder(
+              // Style for disabled state
+              borderRadius: BorderRadius.circular(16),
+              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),

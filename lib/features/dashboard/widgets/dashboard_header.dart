@@ -1,22 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:shimmer/shimmer.dart'; // Pastikan package ini ada
 import '../../../core/constant/app_colors.dart';
 
 class DashboardHeader extends StatelessWidget {
   final String userName;
   final bool isPro;
+  final String? avatarUrl;
   final VoidCallback? onAvatarTap;
+  final bool isLoading; // 1. Parameter baru untuk status loading
 
   const DashboardHeader({
     super.key,
     required this.userName,
-    this.isPro = true,
+    this.isPro = false,
+    this.avatarUrl,
     this.onAvatarTap,
+    this.isLoading = false, // Default false
   });
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      // Padding disamakan dengan StudyScreen & ChatsScreen (24, 24, 24, 16)
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -28,7 +32,7 @@ class DashboardHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 1. Sapaan kecil (Opsional, atau bisa digabung)
+                // 1. Sapaan (Tetap statis agar rapi)
                 Text(
                   "Hello,",
                   style: TextStyle(
@@ -38,51 +42,58 @@ class DashboardHeader extends StatelessWidget {
                     letterSpacing: -0.5,
                   ),
                 ),
-                
-                // 2. Nama User (Style Title H1 - Konsisten dengan "Study Hub" / "Messages")
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        userName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 32, // Ukuran font header standar aplikasi
-                          fontWeight: FontWeight.w900,
-                          color: AppColors.textMain,
-                          letterSpacing: -1.0,
-                          height: 1.1,
-                        ),
-                      ),
-                    ),
-                    
-                    // 3. Badge PRO (Minimalis di sebelah nama)
-                    if (isPro) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF59E0B), // Warna Emas/Orange Pro
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: const Text(
-                          "PRO",
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                
+
                 const SizedBox(height: 4),
 
-                // 4. Subtitle konsisten
+                // 2. Nama User & Badge (Tampilkan Skeleton jika loading)
+                isLoading
+                    ? _buildNameSkeleton()
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              userName.isEmpty ? "User" : userName,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.textMain,
+                                letterSpacing: -1.0,
+                                height: 1.1,
+                              ),
+                            ),
+                          ),
+
+                          // 3. Badge PRO (Dynamic)
+                          if (isPro) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 3,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFF59E0B), // Gold/Orange Pro
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: const Text(
+                                "PRO",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+
+                const SizedBox(height: 4),
+
+                // 4. Subtitle
                 Text(
                   "Let's start your journey today",
                   style: TextStyle(
@@ -95,10 +106,11 @@ class DashboardHeader extends StatelessWidget {
             ),
           ),
 
-          // --- BAGIAN KANAN: AVATAR (Simple Clean) ---
+          // --- BAGIAN KANAN: AVATAR ---
           const SizedBox(width: 16),
           GestureDetector(
-            onTap: onAvatarTap,
+            // Disable tap saat loading
+            onTap: isLoading ? null : onAvatarTap, 
             child: Container(
               width: 52,
               height: 52,
@@ -114,22 +126,89 @@ class DashboardHeader extends StatelessWidget {
                   ),
                 ],
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(50),
-                child: Container(
-                  color: AppColors.primary.withValues(alpha: 0.05),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    color: AppColors.textMain,
-                    size: 30,
-                  ),
-                  // Nanti ganti child ini dengan Image.asset(...) jika sudah ada foto
-                ),
+              child: ClipOval(
+                // Tampilkan Skeleton jika isLoading = true
+                child: isLoading 
+                  ? _buildAvatarSkeleton() 
+                  : _buildAvatarImage(),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  // --- WIDGET SKELETON (SHIMMER) ---
+
+  Widget _buildNameSkeleton() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Container(
+        width: 180, // Lebar perkiraan nama
+        height: 32, // Tinggi sesuai font size 32
+        margin: const EdgeInsets.symmetric(vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(8),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvatarSkeleton() {
+    return Shimmer.fromColors(
+      baseColor: Colors.grey[300]!,
+      highlightColor: Colors.grey[100]!,
+      child: Container(
+        width: 52,
+        height: 52,
+        color: Colors.white,
+      ),
+    );
+  }
+
+  // --- LOGIC GAMBAR AVATAR ---
+
+  Widget _buildAvatarImage() {
+    // 1. Jika URL valid
+    if (avatarUrl != null && avatarUrl!.isNotEmpty) {
+      return Image.network(
+        avatarUrl!,
+        fit: BoxFit.cover,
+        // Loading Builder: Saat gambar sedang didownload (bytes), tampilkan skeleton juga
+        loadingBuilder: (context, child, loadingProgress) {
+          if (loadingProgress == null) return child;
+          return _buildAvatarSkeleton();
+        },
+        errorBuilder: (context, error, stackTrace) {
+          return _buildFallbackAvatar();
+        },
+      );
+    }
+    // 2. Fallback jika URL kosong
+    return _buildFallbackAvatar();
+  }
+
+  Widget _buildFallbackAvatar() {
+    // Pastikan nama aman untuk URL (tidak error jika kosong)
+    final safeName = userName.trim().isEmpty ? "User" : userName;
+    
+    return Image.network(
+      'https://ui-avatars.com/api/?name=${Uri.encodeComponent(safeName)}&background=random&color=fff&bold=true',
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        // Fallback terakhir (Offline Icon)
+        return Container(
+          color: AppColors.primary.withValues(alpha: 0.05),
+          child: const Icon(
+            Icons.person_rounded,
+            color: AppColors.textMain,
+            size: 30,
+          ),
+        );
+      },
     );
   }
 }

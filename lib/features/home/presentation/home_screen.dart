@@ -1,10 +1,10 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
-import '../../dashboard/widgets/dashboard_header.dart';
+import '../../dashboard/widgets/dashboard_header.dart'; 
 import '../widgets/focus_card.dart';
 import '../widgets/tools_grid.dart';
 
@@ -31,15 +31,19 @@ class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
 
-  // State UI
+  // --- STATE UI ---
   bool _isSearching = false;
+  bool _isLoadingHeader = true;
   late AnimationController _bgController;
   late Animation<double> _bgAnimation;
 
-  // State Data
+  // --- STATE DATA (Dynamic) ---
   String _userName = "Friend";
+  String? _avatarUrl;
+  String _levelStatus = "Reguler";
+  bool _isPro = false;
 
-  // --- GLOBAL SEARCH MASTER DATA ---
+  // --- MASTER DATA ---
   final List<Map<String, dynamic>> _masterSearchData = [
     {
       "title": "Pomodoro Timer",
@@ -120,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _getUserProfile();
+    _fetchUserData(); 
     _searchController.addListener(_onSearchChanged);
 
     _bgController = AnimationController(
@@ -134,30 +138,58 @@ class _HomeScreenState extends State<HomeScreen>
     ).animate(CurvedAnimation(parent: _bgController, curve: Curves.easeInOut));
   }
 
-  // --- FUNGSI SUPABASE ---
-  Future<void> _getUserProfile() async {
+  Future<void> _fetchUserData() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user != null) {
-        final data = await Supabase.instance.client
-            .from('profiles')
-            .select('full_name')
-            .eq('id', user.id)
-            .single();
+        final results = await Future.wait([
+          Supabase.instance.client
+              .from('profiles')
+              .select('full_name, avatar_url')
+              .eq('id', user.id)
+              .maybeSingle(),
+          Supabase.instance.client
+              .from('level')
+              .select('status')
+              .eq('id', user.id)
+              .maybeSingle(),
+        ]);
+
+        final profileData = results[0];
+        final levelData = results[1];
 
         if (mounted) {
           setState(() {
-            String fullName = data['full_name'] ?? "Friend";
-            _userName = fullName.split(' ')[0];
+
+            if (profileData != null) {
+              String fullName = profileData['full_name'] ?? "Friend";
+              _userName = fullName.split(' ')[0]; // Take first name
+              _avatarUrl = profileData['avatar_url'];
+
+              if (_avatarUrl != null) {
+                 _avatarUrl = "$_avatarUrl?t=${DateTime.now().millisecondsSinceEpoch}";
+              }
+            }
+
+            if (levelData != null && levelData['status'] != null) {
+              _levelStatus = levelData['status'];
+              _isPro =
+                  _levelStatus == 'Monthly Premium' ||
+                  _levelStatus == 'Yearly Premium';
+            }
+            
+            _isLoadingHeader = false;
           });
         }
+      } else {
+         if(mounted) setState(() => _isLoadingHeader = false);
       }
     } catch (e) {
-      debugPrint("Error fetching profile: $e");
+      debugPrint("Error fetching home data: $e");
+      if(mounted) setState(() => _isLoadingHeader = false);
     }
   }
 
-  // --- FUNGSI SEARCH ---
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -211,42 +243,46 @@ class _HomeScreenState extends State<HomeScreen>
         children: [
           RepaintBoundary(child: _buildBackgroundDecoration()),
 
-          // Content Layer
           SafeArea(
             bottom: false,
-            child: Column(
-              children: [
-                AnimatedSize(
-                  duration: const Duration(milliseconds: 300),
-                  child: _isSearching
-                      ? const SizedBox(height: 10)
-                      : Column(
-                          children: [
-                            DashboardHeader(
-                              userName: _userName,
-                              isPro: true,
+            child: RefreshIndicator(
+              onRefresh: _fetchUserData,
+              color: AppColors.primary,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                child: Column(
+                  children: [
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 300),
+                      child: _isSearching
+                          ? const SizedBox(height: 10)
+                          : Column(
+                              children: [
+                                // --- UPDATED HEADER CALL ---
+                                DashboardHeader(
+                                  userName: _userName,
+                                  isPro: _isPro,
+                                  avatarUrl: _avatarUrl,
+                                  isLoading: _isLoadingHeader,
+                                  onAvatarTap: () => widget.onSwitchTab(3),
+                                ),
+                                const SizedBox(height: 8),
+                              ],
                             ),
-                            const SizedBox(height: 8),
-                          ],
-                        ),
-                ),
+                    ),
 
-                // Search Bar
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: _buildFunctionalSearchBar(),
-                ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: _buildFunctionalSearchBar(),
+                    ),
 
-                const SizedBox(height: 24),
-                Expanded(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
-                    child: _isSearching
+                    const SizedBox(height: 24),
+                    _isSearching
                         ? _buildSearchResults()
                         : _buildDashboardContent(),
-                  ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -255,8 +291,7 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Widget _buildDashboardContent() {
-    return SingleChildScrollView(
-      physics: const BouncingScrollPhysics(),
+    return Padding(
       padding: const EdgeInsets.fromLTRB(0, 0, 0, 120),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,11 +304,8 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(height: 18),
-
           const FocusSection(),
-
           const SizedBox(height: 36),
-
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: _buildSectionTitle(
@@ -292,32 +324,36 @@ class _HomeScreenState extends State<HomeScreen>
 
   Widget _buildSearchResults() {
     if (_searchResults.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.manage_search_rounded,
-              size: 80, // MODIFIKASI: Icon lebih besar
-              color: AppColors.primary.withValues(alpha: 0.2),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              "No matching features found",
-              style: TextStyle(
-                color: AppColors.textMain,
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
+      return SizedBox(
+        height: 400,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.manage_search_rounded,
+                size: 80,
+                color: AppColors.primary.withValues(alpha: 0.2),
               ),
-            ),
-          ],
+              const SizedBox(height: 16),
+              const Text(
+                "No matching features found",
+                style: TextStyle(
+                  color: AppColors.textMain,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      physics: const BouncingScrollPhysics(),
+      shrinkWrap: true, // Important when nested
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: _searchResults.length,
       separatorBuilder: (c, i) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
@@ -354,10 +390,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             subtitle: Text(
               item['desc'],
-              style: const TextStyle(
-                color: AppColors.textMuted,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
             trailing: const Icon(
               Icons.arrow_forward_ios_rounded,
@@ -527,10 +560,7 @@ class _HomeScreenState extends State<HomeScreen>
       child: Container(
         width: size,
         height: size,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: color,
-        ),
+        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
       ),
     );
   }
