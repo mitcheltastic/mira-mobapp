@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
-import '../../dashboard/widgets/dashboard_header.dart'; 
+import '../../dashboard/widgets/dashboard_header.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/tools_grid.dart';
 
@@ -124,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void initState() {
     super.initState();
-    _fetchUserData(); 
+    _fetchUserData();
     _searchController.addListener(_onSearchChanged);
 
     _bgController = AnimationController(
@@ -145,7 +145,7 @@ class _HomeScreenState extends State<HomeScreen>
         final results = await Future.wait([
           Supabase.instance.client
               .from('profiles')
-              .select('full_name, avatar_url')
+              .select('nickname, avatar_url')
               .eq('id', user.id)
               .maybeSingle(),
           Supabase.instance.client
@@ -160,14 +160,14 @@ class _HomeScreenState extends State<HomeScreen>
 
         if (mounted) {
           setState(() {
-
             if (profileData != null) {
-              String fullName = profileData['full_name'] ?? "Friend";
+              String fullName = profileData['nickname'] ?? "Friend";
               _userName = fullName.split(' ')[0]; // Take first name
               _avatarUrl = profileData['avatar_url'];
 
               if (_avatarUrl != null) {
-                 _avatarUrl = "$_avatarUrl?t=${DateTime.now().millisecondsSinceEpoch}";
+                _avatarUrl =
+                    "$_avatarUrl?t=${DateTime.now().millisecondsSinceEpoch}";
               }
             }
 
@@ -177,16 +177,16 @@ class _HomeScreenState extends State<HomeScreen>
                   _levelStatus == 'Monthly Premium' ||
                   _levelStatus == 'Yearly Premium';
             }
-            
+
             _isLoadingHeader = false;
           });
         }
       } else {
-         if(mounted) setState(() => _isLoadingHeader = false);
+        if (mounted) setState(() => _isLoadingHeader = false);
       }
     } catch (e) {
       debugPrint("Error fetching home data: $e");
-      if(mounted) setState(() => _isLoadingHeader = false);
+      if (mounted) setState(() => _isLoadingHeader = false);
     }
   }
 
@@ -249,7 +249,9 @@ class _HomeScreenState extends State<HomeScreen>
               onRefresh: _fetchUserData,
               color: AppColors.primary,
               child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+                physics: const AlwaysScrollableScrollPhysics(
+                  parent: BouncingScrollPhysics(),
+                ),
                 child: Column(
                   children: [
                     AnimatedSize(
