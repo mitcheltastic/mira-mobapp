@@ -580,7 +580,7 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       itemCount: qTasks.length,
       // Use __ for the second parameter to make it unique
-      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final task = qTasks[index];
 
