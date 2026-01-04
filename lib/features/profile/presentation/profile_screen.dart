@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shimmer/shimmer.dart'; // IMPORT SHIMMER
+import 'package:shimmer/shimmer.dart';
 
 import '../widgets/biometric_settings_screen.dart';
 import '../../../core/constant/app_colors.dart';
@@ -53,7 +53,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         final profileData = await Supabase.instance.client
             .from('profiles')
-            .select('full_name, avatar_url')
+            .select('nickname, avatar_url')
             .eq('id', user.id)
             .maybeSingle();
 
@@ -66,7 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (mounted) {
           setState(() {
             if (profileData != null) {
-              _fullName = profileData['full_name'] ?? "User";
+              _fullName = profileData['nickname'] ?? "User";
               _avatarUrl = profileData['avatar_url'];
               
               if (_avatarUrl != null) {
@@ -256,14 +256,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: Icons.headset_mic_outlined,
                         color: Colors.orange,
                         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (c) => const HelpSupportScreen())),
-                      ),
-                      _buildDivider(),
-                      _buildMenuItem(
-                        title: "App Language",
-                        icon: Icons.language,
-                        color: Colors.teal,
-                        trailingText: "English",
-                        onTap: () {},
                       ),
                     ],
                   ),

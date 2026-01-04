@@ -227,7 +227,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
               builder: (_) => const CreatePostSheet(),
             );
           },
-          backgroundColor: AppColors.primary,
+          backgroundColor: AppColors.textMain,
           icon: const Icon(Icons.add, color: Colors.white),
           label: const Text(
             "Post",

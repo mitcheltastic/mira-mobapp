@@ -21,7 +21,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   bool _obscureConfirm = true;
 
   bool _isLoading = false;
-  bool _isSocialLogin = false; // 1. Track if user is Google/Apple/etc
+  bool _isSocialLogin = false; 
 
   @override
   void initState() {
@@ -29,11 +29,10 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     _checkLoginProvider();
   }
 
-  // 2. CHECK PROVIDER LOGIC
+  // --- 1. LOGIC CHECK PROVIDER (TETAP UTUH) ---
   void _checkLoginProvider() {
     final user = Supabase.instance.client.auth.currentUser;
-    // 'provider' is usually inside app_metadata.
-    // If it's 'email', they have a password. If 'google', they don't.
+    // 'provider' biasanya ada di app_metadata.
     final provider = user?.appMetadata['provider'] ?? 'email';
 
     if (provider != 'email') {
@@ -41,7 +40,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
         _isSocialLogin = true;
       });
 
-      // 3. SHOW POP-UP NOTIFICATION
+      // Show Popup (Sesuai kode asli)
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _showSocialLoginDialog(provider);
       });
@@ -51,7 +50,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   void _showSocialLoginDialog(String provider) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Force them to acknowledge
+      barrierDismissible: false,
       builder: (context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
@@ -65,8 +64,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context); // Close dialog
-                // Optional: Navigator.pop(context); // Go back to previous screen?
+                Navigator.pop(context);
               },
               child: const Text(
                 "Understood",
@@ -87,6 +85,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     super.dispose();
   }
 
+  // --- 2. LOGIC CHANGE PASSWORD (TETAP UTUH) ---
   Future<void> _changePassword() async {
     // Safety check
     if (_isSocialLogin) return;
@@ -157,15 +156,17 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
     );
   }
 
+  // --- 3. UI BUILD (MODIFIED FOR CONSISTENCY) ---
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () => FocusScope.of(context).unfocus(),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF8FAFC),
+        backgroundColor: const Color(0xFFF8FAFC), // Background bersih
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           elevation: 0,
+          centerTitle: true,
           leading: IconButton(
             icon: const Icon(
               Icons.arrow_back_ios_new_rounded,
@@ -174,7 +175,6 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
             ),
             onPressed: () => Navigator.pop(context),
           ),
-          centerTitle: true,
           title: const Text(
             "Security",
             style: TextStyle(
@@ -189,28 +189,48 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           physics: const BouncingScrollPhysics(),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text(
+              const SizedBox(height: 10),
+              
+              // --- HERO ICON (Visual Konsisten) ---
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: _isSocialLogin 
+                      ? Colors.grey.withValues(alpha: 0.1) 
+                      : AppColors.primary.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _isSocialLogin ? Icons.no_accounts_rounded : Icons.lock_reset_rounded,
+                  color: _isSocialLogin ? Colors.grey : AppColors.primary,
+                  size: 40,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
                 "Change Password",
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
                   color: AppColors.textMain,
                 ),
               ),
               const SizedBox(height: 8),
               Text(
-                _isSocialLogin
-                    ? "This feature is unavailable because you are logged in via a social account."
-                    : "Your new password must be different from previously used passwords.",
-                style: const TextStyle(
+                "Create a strong password to keep your account secure.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
                   fontSize: 14,
-                  color: AppColors.textMuted,
-                  height: 1.5,
+                  color: AppColors.textMuted.withValues(alpha: 0.8),
                 ),
               ),
-              const SizedBox(height: 24),
+              
+              const SizedBox(height: 30),
+
+              // --- FORM CONTAINER ---
               Container(
                 padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
@@ -224,47 +244,85 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                     ),
                   ],
                 ),
-                child: Opacity(
-                  opacity: _isSocialLogin
-                      ? 0.5
-                      : 1.0, // Dim the form if disabled
-                  child: Column(
-                    children: [
-                      _BuildPasswordField(
-                        label: "Current Password",
-                        controller: _currentPassController,
-                        obscureText: _obscureCurrent,
-                        enabled: !_isSocialLogin, // 4. Disable input
-                        onToggleVisibility: () =>
-                            setState(() => _obscureCurrent = !_obscureCurrent),
+                child: Column(
+                  children: [
+                    // Jika Social Login, Tampilkan Info Box
+                    if (_isSocialLogin)
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.info_outline, color: Colors.orange),
+                            const SizedBox(width: 12),
+                            const Expanded(
+                              child: Text(
+                                "Password change is disabled for social accounts.",
+                                style: TextStyle(
+                                  fontSize: 13, 
+                                  color: Color(0xFF9A3412), // Dark Orange
+                                  fontWeight: FontWeight.w600
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: 10),
-                      const Divider(color: Color(0xFFF1F5F9)),
-                      const SizedBox(height: 20),
-                      _BuildPasswordField(
-                        label: "New Password",
-                        controller: _newPassController,
-                        obscureText: _obscureNew,
-                        enabled: !_isSocialLogin, // 4. Disable input
-                        onToggleVisibility: () =>
-                            setState(() => _obscureNew = !_obscureNew),
+
+                    // Input Fields (Opacity jika disabled)
+                    Opacity(
+                      opacity: _isSocialLogin ? 0.5 : 1.0,
+                      child: Column(
+                        children: [
+                          _BuildPasswordField(
+                            label: "Current Password",
+                            controller: _currentPassController,
+                            obscureText: _obscureCurrent,
+                            enabled: !_isSocialLogin,
+                            onToggleVisibility: () =>
+                                setState(() => _obscureCurrent = !_obscureCurrent),
+                          ),
+                          const SizedBox(height: 20),
+                          _BuildPasswordField(
+                            label: "New Password",
+                            controller: _newPassController,
+                            obscureText: _obscureNew,
+                            enabled: !_isSocialLogin,
+                            onToggleVisibility: () =>
+                                setState(() => _obscureNew = !_obscureNew),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          // Requirements
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildRequirementItem("Min. 6 characters"),
+                                _buildRequirementItem("Include 1 special character"),
+                              ],
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 20),
+                          _BuildPasswordField(
+                            label: "Confirm Password",
+                            controller: _confirmPassController,
+                            obscureText: _obscureConfirm,
+                            enabled: !_isSocialLogin,
+                            onToggleVisibility: () =>
+                                setState(() => _obscureConfirm = !_obscureConfirm),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      _buildRequirementItem("Must be at least 6 characters"),
-                      _buildRequirementItem(
-                        "Must contain one special character",
-                      ),
-                      const SizedBox(height: 20),
-                      _BuildPasswordField(
-                        label: "Confirm Password",
-                        controller: _confirmPassController,
-                        obscureText: _obscureConfirm,
-                        enabled: !_isSocialLogin, // 4. Disable input
-                        onToggleVisibility: () =>
-                            setState(() => _obscureConfirm = !_obscureConfirm),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 40),
@@ -293,11 +351,12 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
           width: double.infinity,
           height: 56,
           child: ElevatedButton(
-            // 5. Disable Button Logic
             onPressed: (_isLoading || _isSocialLogin) ? null : _changePassword,
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
-              // If disabled, color handles itself, but we can tweak if needed
+              // Style disabled otomatis dihandle Flutter, tapi bisa dicustom
+              disabledBackgroundColor: Colors.grey[300],
+              disabledForegroundColor: Colors.grey[500],
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
               ),
@@ -314,7 +373,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
                     ),
                   )
                 : Text(
-                    _isSocialLogin ? "Managed by Google" : "Change Password",
+                    _isSocialLogin ? "Managed by Provider" : "Update Password",
                     style: const TextStyle(
                       color: Colors.white,
                       fontWeight: FontWeight.bold,
@@ -329,27 +388,21 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
   Widget _buildRequirementItem(String text) {
     return Padding(
-      padding: const EdgeInsets.only(left: 4, bottom: 6),
+      padding: const EdgeInsets.only(left: 4, bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Container(
-            height: 6,
-            width: 6,
-            decoration: BoxDecoration(
-              color: _isSocialLogin ? Colors.grey : AppColors.success,
-              shape: BoxShape.circle,
-            ),
+          Icon(Icons.check_circle_rounded, 
+            size: 14, 
+            color: _isSocialLogin ? Colors.grey : AppColors.success
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppColors.textMuted,
-                height: 1.2,
-              ),
+          const SizedBox(width: 8),
+          Text(
+            text,
+            style: const TextStyle(
+              fontSize: 12,
+              color: AppColors.textMuted,
+              fontWeight: FontWeight.w500,
             ),
           ),
         ],
@@ -358,19 +411,20 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
   }
 }
 
+// --- HELPER WIDGET (INPUT FIELD) ---
 class _BuildPasswordField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
   final bool obscureText;
   final VoidCallback onToggleVisibility;
-  final bool enabled; // 6. Add enabled field
+  final bool enabled;
 
   const _BuildPasswordField({
     required this.label,
     required this.controller,
     required this.obscureText,
     required this.onToggleVisibility,
-    this.enabled = true, // Default to true
+    this.enabled = true,
   });
 
   @override
@@ -390,7 +444,7 @@ class _BuildPasswordField extends StatelessWidget {
         TextField(
           controller: controller,
           obscureText: obscureText,
-          enabled: enabled, // 7. Pass to TextField
+          enabled: enabled,
           style: const TextStyle(
             color: AppColors.textMain,
             fontWeight: FontWeight.w600,
@@ -398,12 +452,10 @@ class _BuildPasswordField extends StatelessWidget {
           ),
           decoration: InputDecoration(
             filled: true,
-            fillColor: enabled
-                ? Colors.white
-                : const Color(0xFFF1F5F9), // Grey out if disabled
-            prefixIcon: const Icon(
+            fillColor: enabled ? const Color(0xFFF8FAFC) : Colors.grey[100], 
+            prefixIcon: Icon(
               Icons.lock_outline_rounded,
-              color: Color(0xFF94A3B8),
+              color: enabled ? const Color(0xFF94A3B8) : Colors.grey,
               size: 22,
             ),
             suffixIcon: IconButton(
@@ -425,9 +477,8 @@ class _BuildPasswordField extends StatelessWidget {
               borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
             ),
             disabledBorder: OutlineInputBorder(
-              // Style for disabled state
               borderRadius: BorderRadius.circular(16),
-              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
+              borderSide: BorderSide(color: Colors.grey.shade300, width: 1),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
