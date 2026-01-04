@@ -3,6 +3,20 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 class AuthRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  // --- NEW: Session & User Getters (WhoAmI Logic) ---
+  // These check the locally persisted token. No API call needed.
+
+  // 1. Get current user object (or null)
+  User? get currentUser => _supabase.auth.currentUser;
+
+  // 2. Get current session object (or null)
+  Session? get currentSession => _supabase.auth.currentSession;
+
+  // 3. Simple check if logged in
+  bool get isLoggedIn => _supabase.auth.currentUser != null;
+
+  // --- EXISTING METHODS ---
+
   // 1. Sign Up
   Future<void> signUp({
     required String email,
@@ -25,7 +39,7 @@ class AuthRepository {
     );
   }
 
-  // 3. Sign In (NEW)
+  // 3. Sign In
   Future<AuthResponse> signIn({
     required String email,
     required String password,
@@ -36,12 +50,12 @@ class AuthRepository {
     );
   }
 
-  // 4. Sign Out (Good to have ready)
+  // 4. Sign Out
   Future<void> signOut() async {
     await _supabase.auth.signOut();
   }
 
-  // 5. Send Password Reset Email (NEW)
+  // 5. Send Password Reset Email
   Future<void> sendPasswordResetEmail(String email) async {
     await _supabase.auth.resetPasswordForEmail(email);
   }

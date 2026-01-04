@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:timeago/timeago.dart' as timeago; // 1. Add this import
 import '../../../core/constant/app_colors.dart';
 
 class NoteCard extends StatelessWidget {
   final String title;
   final String content;
-  final String date;
+  final String date; // This receives the ISO String from Supabase
   final String category;
-  final Color accentColor; // Warna pembeda kategori
+  final Color accentColor;
   final VoidCallback onTap;
 
   const NoteCard({
@@ -15,12 +16,17 @@ class NoteCard extends StatelessWidget {
     required this.content,
     required this.date,
     required this.category,
-    required this.accentColor, // Wajib diisi
+    required this.accentColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // 2. Parse the date string to a readable "Time Ago" format
+    final DateTime parsedDate =
+        DateTime.tryParse(date)?.toLocal() ?? DateTime.now();
+    final String displayDate = timeago.format(parsedDate, locale: 'en_short');
+
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -46,13 +52,18 @@ class NoteCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: accentColor.withValues(alpha: 0.05),
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(8),
@@ -73,14 +84,27 @@ class NoteCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  Text(
-                    date,
-                    style: const TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time_rounded,
+                        size: 12,
+                        color: AppColors.textMuted.withValues(alpha: 0.6),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        displayDate, // 3. Use the formatted date here
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
-            
+
             // --- Body: Judul & Konten ---
             Padding(
               padding: const EdgeInsets.all(16),
@@ -100,7 +124,7 @@ class NoteCard extends StatelessWidget {
                   const SizedBox(height: 8),
                   Text(
                     content,
-                    maxLines: 3, // Tampilkan sedikit lebih banyak
+                    maxLines: 3,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 14,

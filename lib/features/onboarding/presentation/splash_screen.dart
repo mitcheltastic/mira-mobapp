@@ -3,9 +3,12 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:lottie/lottie.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/constant/app_colors.dart';
+// 1. Import Auth Repository
+import '../../auth/data/auth_repository.dart';
+// 2. CORRECT IMPORT: Import your Main Navigation Screen (The Wrapper with Dock)
+import '../../dashboard/presentation/main_navigation_screen.dart';
 import 'onboarding_screen.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -20,6 +23,9 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _lottieController;
   late AnimationController _bgController;
   late Animation<double> _bgScaleAnimation;
+
+  // 3. Initialize AuthRepository
+  final AuthRepository _authRepo = AuthRepository();
 
   int _sequenceStep = 0;
 
@@ -45,28 +51,38 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   void _startCinematicSequence() async {
+    // Step 1: Text
     setState(() => _sequenceStep = 1);
     await Future.delayed(const Duration(milliseconds: 2000));
 
     if (!mounted) return;
+    // Step 2: Image
     setState(() => _sequenceStep = 2);
     await Future.delayed(const Duration(milliseconds: 3500));
 
     if (!mounted) return;
+    // Step 3: Text
     setState(() => _sequenceStep = 3);
     await Future.delayed(const Duration(milliseconds: 2000));
 
     if (!mounted) return;
+    // Final: Navigate
     _navigateToNextScreen();
   }
 
   Future<void> _navigateToNextScreen() async {
-    final session = Supabase.instance.client.auth.currentSession;
+    // 4. Check Session using AuthRepository
+    final isLoggedIn = _authRepo.isLoggedIn;
 
     if (!mounted) return;
-    Widget nextScreen = const OnboardingScreen();
 
-    if (session != null) {
+    Widget nextScreen;
+
+    if (isLoggedIn) {
+      // CORRECTED: User has active session -> Go to Main Navigation (The Dock)
+      nextScreen = const MainNavigationScreen();
+    } else {
+      // No session -> Go to Onboarding
       nextScreen = const OnboardingScreen();
     }
 
