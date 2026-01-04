@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
+import '../../../core/utils/premium_helper.dart';
 
+// Feature Imports
 import 'pomodoro_screen.dart';
 import 'feynman_screen.dart';
 import 'flashcard_screen.dart';
@@ -10,8 +13,6 @@ import 'notes_screen.dart';
 import 'eisenhower_screen.dart';
 import 'blurting_screen.dart';
 import '../../second_brain/presentation/second_brain_screen.dart';
-
-import '../widgets/study_tools_grid.dart';
 import 'ai_chat_screen.dart';
 
 class StudyScreen extends StatefulWidget {
@@ -22,8 +23,18 @@ class StudyScreen extends StatefulWidget {
 }
 
 class _StudyScreenState extends State<StudyScreen> {
+  final TextEditingController _searchController = TextEditingController();
+
+  // --- STATE ---
   String _searchQuery = "";
   String _selectedCategory = "All";
+  bool _isPro = false;
+  bool _isLoading = true; // Now actively used
+
+  // --- LOCKED FEATURES ---
+  final List<String> _lockedFeatures = ["Blurting Method", "Flashcards"];
+
+  // --- MASTER DATA ---
   final List<Map<String, dynamic>> _allTools = [
     {
       "title": "Pomodoro Timer",
@@ -87,32 +98,69 @@ class _StudyScreenState extends State<StudyScreen> {
       "icon": Icons.psychology_rounded,
       "color": const Color(0xFF1E293B),
       "category": "Knowledge",
-      "screen": const SecondBrainScreen(),
+      "screen": const SizedBox(), // Handled dynamically
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserStatus();
+  }
+
+  // --- FETCH SUBSCRIPTION STATUS ---
+  Future<void> _fetchUserStatus() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final levelData = await Supabase.instance.client
+            .from('level')
+            .select('status')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (mounted) {
+          setState(() {
+            if (levelData != null && levelData['status'] != null) {
+              final status = levelData['status'];
+              _isPro =
+                  status == 'Monthly Premium' || status == 'Yearly Premium';
+            }
+            _isLoading = false;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    } catch (e) {
+      debugPrint("Error fetching study status: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   List<Map<String, dynamic>> get _filteredTools {
     return _allTools.where((tool) {
       final categoryMatch =
           _selectedCategory == "All" || tool['category'] == _selectedCategory;
-      final searchMatch = tool['title']
-              .toString()
-              .toLowerCase()
-              .contains(_searchQuery.toLowerCase()) ||
-          tool['desc']
-              .toString()
-              .toLowerCase()
-              .contains(_searchQuery.toLowerCase());
+      final searchMatch =
+          tool['title'].toString().toLowerCase().contains(
+            _searchQuery.toLowerCase(),
+          ) ||
+          tool['desc'].toString().toLowerCase().contains(
+            _searchQuery.toLowerCase(),
+          );
       return categoryMatch && searchMatch;
     }).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: Brightness.dark,
-    ));
+    SystemChrome.setSystemUIOverlayStyle(
+      const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.dark,
+      ),
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFFAFAFA),
@@ -147,7 +195,7 @@ class _StudyScreenState extends State<StudyScreen> {
                   const Text(
                     "Study Hub",
                     style: TextStyle(
-                      fontSize: 32, 
+                      fontSize: 32,
                       fontWeight: FontWeight.w900,
                       color: AppColors.textMain,
                       letterSpacing: -1.0,
@@ -162,9 +210,7 @@ class _StudyScreenState extends State<StudyScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-
                   const SizedBox(height: 24),
-
                   _buildSearchBar(),
                 ],
               ),
@@ -174,7 +220,11 @@ class _StudyScreenState extends State<StudyScreen> {
               child: Column(
                 children: [
                   SingleChildScrollView(
-                    padding: const EdgeInsets.only(left: 24, right: 24, bottom: 16),
+                    padding: const EdgeInsets.only(
+                      left: 24,
+                      right: 24,
+                      bottom: 16,
+                    ),
                     scrollDirection: Axis.horizontal,
                     physics: const BouncingScrollPhysics(),
                     child: Row(
@@ -189,20 +239,146 @@ class _StudyScreenState extends State<StudyScreen> {
                     ),
                   ),
 
+                  // Grid with Loading State
                   Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 300),
-                      child: _filteredTools.isEmpty
-                          ? _buildEmptyState()
-                          : StudyToolsGrid(
-                              key: ValueKey(_searchQuery + _selectedCategory),
-                              tools: _filteredTools,
+                    child: _isLoading
+                        ? const Center(child: CircularProgressIndicator())
+                        : RefreshIndicator(
+                            onRefresh: _fetchUserStatus,
+                            color: AppColors.primary,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 300),
+                              child: _filteredTools.isEmpty
+                                  ? _buildEmptyState()
+                                  : _buildToolsGrid(),
                             ),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolsGrid() {
+    return GridView.builder(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 0.85,
+      ),
+      physics: const AlwaysScrollableScrollPhysics(
+        parent: BouncingScrollPhysics(),
+      ),
+      itemCount: _filteredTools.length,
+      itemBuilder: (context, index) {
+        final tool = _filteredTools[index];
+        final title = tool['title'];
+        final isLocked = _lockedFeatures.contains(title) && !_isPro;
+
+        return _buildToolCard(tool, isLocked);
+      },
+    );
+  }
+
+  Widget _buildToolCard(Map<String, dynamic> tool, bool isLocked) {
+    return GestureDetector(
+      onTap: () {
+        if (isLocked) {
+          showPremiumDialog(context, featureName: tool['title']);
+          return;
+        }
+
+        if (tool['title'] == "Second Brain") {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => SecondBrainScreen(isPro: _isPro),
+            ),
+          );
+          return;
+        }
+
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => tool['screen']),
+        );
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: AppColors.freeBorder),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.shadow.withValues(alpha: 0.05),
+              blurRadius: 15,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: (tool['color'] as Color).withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Icon(tool['icon'], color: tool['color'], size: 28),
+                  ),
+                  const Spacer(),
+                  Text(
+                    tool['title'],
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textMain,
+                      height: 1.2,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    tool['desc'],
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.textMuted.withValues(alpha: 0.8),
+                      height: 1.4,
                     ),
                   ),
                 ],
               ),
             ),
+
+            if (isLocked)
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.lock_rounded,
+                    size: 16,
+                    color: Colors.amber[700],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -224,9 +400,12 @@ class _StudyScreenState extends State<StudyScreen> {
         ],
       ),
       child: TextField(
+        controller: _searchController,
         onChanged: (value) => setState(() => _searchQuery = value),
         style: const TextStyle(
-            color: AppColors.textMain, fontWeight: FontWeight.w600),
+          color: AppColors.textMain,
+          fontWeight: FontWeight.w600,
+        ),
         decoration: InputDecoration(
           hintText: "Search method or tool...",
           hintStyle: TextStyle(
@@ -241,11 +420,15 @@ class _StudyScreenState extends State<StudyScreen> {
               size: 24,
             ),
           ),
-          prefixIconConstraints:
-              const BoxConstraints(minWidth: 0, minHeight: 0),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 0,
+            minHeight: 0,
+          ),
           border: InputBorder.none,
-          contentPadding:
-              const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          contentPadding: const EdgeInsets.symmetric(
+            vertical: 16,
+            horizontal: 20,
+          ),
         ),
       ),
     );
@@ -256,16 +439,14 @@ class _StudyScreenState extends State<StudyScreen> {
     return GestureDetector(
       onTap: () {
         setState(() => _selectedCategory = label);
-        HapticFeedback.lightImpact(); 
+        HapticFeedback.lightImpact();
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(right: 10),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
-          color: isSelected
-              ? AppColors.textMain
-              : Colors.white,
+          color: isSelected ? AppColors.textMain : Colors.white,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(
             color: isSelected ? AppColors.textMain : AppColors.freeBorder,
@@ -276,7 +457,7 @@ class _StudyScreenState extends State<StudyScreen> {
                     color: Colors.black.withValues(alpha: 0.2),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
-                  )
+                  ),
                 ]
               : [],
         ),

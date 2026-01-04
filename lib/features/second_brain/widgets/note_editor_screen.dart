@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
 class NoteEditorScreen extends StatefulWidget {
@@ -13,24 +14,30 @@ class NoteEditorScreen extends StatefulWidget {
 class _NoteEditorScreenState extends State<NoteEditorScreen> {
   late TextEditingController _titleController;
   late TextEditingController _contentController;
-  
+  final _supabase = Supabase.instance.client;
+  bool _isSaving = false;
+
   // State untuk Kategori
   String _selectedCategory = "Personal";
   final List<String> _categories = ["Personal", "Project", "Study", "Ideas"];
-  
-  // Mapping Warna Kategori (Agar konsisten)
+
+  // Mapping Warna Kategori
   final Map<String, Color> _categoryColors = {
     "Personal": const Color(0xFFF43F5E), // Rose
-    "Project": const Color(0xFF6366F1),  // Indigo
-    "Study": const Color(0xFF10B981),    // Emerald
-    "Ideas": const Color(0xFFF59E0B),    // Amber
+    "Project": const Color(0xFF6366F1), // Indigo
+    "Study": const Color(0xFF10B981), // Emerald
+    "Ideas": const Color(0xFFF59E0B), // Amber
   };
 
   @override
   void initState() {
     super.initState();
-    _titleController = TextEditingController(text: widget.existingNote?['title'] ?? "");
-    _contentController = TextEditingController(text: widget.existingNote?['content'] ?? "");
+    _titleController = TextEditingController(
+      text: widget.existingNote?['title'] ?? "",
+    );
+    _contentController = TextEditingController(
+      text: widget.existingNote?['content'] ?? "",
+    );
     if (widget.existingNote != null) {
       _selectedCategory = widget.existingNote?['category'] ?? "Personal";
     }
@@ -43,26 +50,69 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     super.dispose();
   }
 
-  void _saveNote() {
-    // Di sini nanti logika simpan ke Database/API
-    // Untuk sekarang kita kembalikan data ke screen sebelumnya
-    final newNoteData = {
-      "title": _titleController.text,
-      "content": _contentController.text,
-      "category": _selectedCategory,
-      "date": "Just now",
-      "color": _categoryColors[_selectedCategory],
-    };
+  Future<void> _saveNote() async {
+    final title = _titleController.text.trim();
+    final content = _contentController.text.trim();
 
-    Navigator.pop(context, newNoteData); // Mengirim data balik
-    
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text("Thought captured successfully!"),
-        backgroundColor: _categoryColors[_selectedCategory],
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Please add a title")));
+      return;
+    }
+
+    setState(() => _isSaving = true);
+
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // FIX: Use .toARGB32() instead of .value
+      final colorHex = _categoryColors[_selectedCategory]!
+          .toARGB32()
+          .toString();
+
+      if (widget.existingNote == null) {
+        // --- INSERT NEW NOTE ---
+        await _supabase.from('notes').insert({
+          'user_id': userId,
+          'title': title,
+          'content': content,
+          'category': _selectedCategory,
+          'color_hex': colorHex,
+        });
+      } else {
+        // --- UPDATE EXISTING NOTE ---
+        await _supabase
+            .from('notes')
+            .update({
+              'title': title,
+              'content': content,
+              'category': _selectedCategory,
+              'color_hex': colorHex,
+            })
+            .eq('id', widget.existingNote!['id']); // Ensure ID is passed
+      }
+
+      if (mounted) {
+        Navigator.pop(context, true); // Return true to signal refresh
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Thought captured successfully!"),
+            backgroundColor: _categoryColors[_selectedCategory],
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Error saving note: $e")));
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   @override
@@ -82,20 +132,31 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
           Padding(
             padding: const EdgeInsets.only(right: 16.0),
             child: FilledButton.icon(
-              onPressed: _saveNote,
+              onPressed: _isSaving ? null : _saveNote,
               style: FilledButton.styleFrom(
                 backgroundColor: activeColor,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
               ),
-              icon: const Icon(Icons.check_rounded, size: 18),
-              label: const Text("Save"),
+              icon: _isSaving
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.check_rounded, size: 18),
+              label: Text(_isSaving ? "Saving..." : "Save"),
             ),
-          )
+          ),
         ],
       ),
       body: Column(
         children: [
-          // --- Category Selector (Penting untuk 'Organize') ---
+          // --- Category Selector ---
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
@@ -116,7 +177,9 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                     selectedColor: catColor,
                     backgroundColor: Colors.grey[100],
                     side: BorderSide.none,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
                     onSelected: (bool selected) {
                       if (selected) {
                         setState(() {
@@ -141,8 +204,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 TextField(
                   controller: _titleController,
                   style: const TextStyle(
-                    fontSize: 24, 
-                    fontWeight: FontWeight.w800, 
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
                     color: AppColors.textMain,
                     height: 1.2,
                   ),
@@ -153,17 +216,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                   ),
                   maxLines: null,
                 ),
-                
+
                 const SizedBox(height: 16),
-                
+
                 // Input Isi
                 TextField(
                   controller: _contentController,
-                  maxLines: null, // Expandable
+                  maxLines: null,
                   style: const TextStyle(
-                    fontSize: 16, 
-                    height: 1.6, 
-                    color: AppColors.textMain
+                    fontSize: 16,
+                    height: 1.6,
+                    color: AppColors.textMain,
                   ),
                   decoration: const InputDecoration(
                     hintText: "Start typing details here...",
@@ -174,9 +237,8 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
               ],
             ),
           ),
-          
-          // --- Formatting Toolbar (Opsional/Visual Saja) ---
-          // Ini memberikan kesan 'Editor' yang serius
+
+          // --- Formatting Toolbar ---
           Container(
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
             decoration: BoxDecoration(
@@ -189,9 +251,17 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
                 _FormatButton(icon: Icons.format_italic_rounded),
                 _FormatButton(icon: Icons.format_list_bulleted_rounded),
                 const Spacer(),
-                Text(
-                  "${_contentController.text.length} chars",
-                  style: const TextStyle(fontSize: 10, color: AppColors.textMuted),
+                ListenableBuilder(
+                  listenable: _contentController,
+                  builder: (context, _) {
+                    return Text(
+                      "${_contentController.text.length} chars",
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: AppColors.textMuted,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -202,7 +272,6 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
   }
 }
 
-// Widget kecil untuk tombol format
 class _FormatButton extends StatelessWidget {
   final IconData icon;
   const _FormatButton({required this.icon});
@@ -210,7 +279,7 @@ class _FormatButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return IconButton(
-      onPressed: () {}, // Nanti diimplementasikan logikanya
+      onPressed: () {},
       icon: Icon(icon, color: AppColors.textMuted, size: 20),
       visualDensity: VisualDensity.compact,
     );

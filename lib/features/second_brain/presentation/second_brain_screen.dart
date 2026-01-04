@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-// IMPORT FILE YANG SUDAH KITA BUAT SEBELUMNYA
+// IMPORT HELPER & CONSTANTS
 import '../../../core/constant/app_colors.dart';
-import '../widgets/note_card.dart';        
-import '../widgets/note_editor_screen.dart'; 
+import '../../../core/utils/premium_helper.dart';
+import '../widgets/note_card.dart';
+import '../widgets/note_editor_screen.dart';
 
 class SecondBrainScreen extends StatefulWidget {
-  const SecondBrainScreen({super.key});
+  final bool isPro;
+
+  const SecondBrainScreen({super.key, required this.isPro});
 
   @override
   State<SecondBrainScreen> createState() => _SecondBrainScreenState();
@@ -15,7 +19,8 @@ class SecondBrainScreen extends StatefulWidget {
 
 class _SecondBrainScreenState extends State<SecondBrainScreen>
     with TickerProviderStateMixin {
-  
+  final _supabase = Supabase.instance.client;
+
   // --- Animation Controllers ---
   late AnimationController _pulseController;
   late AnimationController _fadeController;
@@ -23,41 +28,16 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
   // --- Search Controller ---
   final TextEditingController _searchController = TextEditingController();
 
-  // --- DATA CATATAN (State Lokal) ---
-  // PERBAIKAN: Tambahkan 'final' di sini karena list ini tidak pernah di-assign ulang
-  final List<Map<String, dynamic>> _notes = [
-    {
-      "title": "Project MIRA Architecture",
-      "content": "Implement Supabase Auth with RBAC. Design needs to be futuristic but clean.",
-      "date": "2 mins ago",
-      "category": "Project",
-      "color": const Color(0xFF6366F1) // Indigo
-    },
-    {
-      "title": "Network Security: IPSec",
-      "content": "IPSec operates at Layer 3. Components: AH (Authentication Header) and ESP.",
-      "date": "Yesterday",
-      "category": "Study",
-      "color": const Color(0xFF10B981) // Emerald
-    },
-    {
-      "title": "Startup Ideas 2025",
-      "content": "AI-powered gardening assistant? Or maybe a Second Brain app.",
-      "date": "20 Oct 2025",
-      "category": "Ideas",
-      "color": const Color(0xFFF59E0B) // Amber
-    },
-  ];
-
-  // List untuk hasil pencarian
+  // --- DATA CATATAN ---
+  List<Map<String, dynamic>> _notes = [];
   List<Map<String, dynamic>> _filteredNotes = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredNotes = List.from(_notes); // Copy data awal
 
-    // Setup Animasi Background
+    // Setup Animations
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 4),
@@ -68,9 +48,32 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
       duration: const Duration(milliseconds: 800),
     )..forward();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-       _showIntroGuide(); 
-    });
+    // Fetch Data
+    _fetchNotes();
+  }
+
+  Future<void> _fetchNotes() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final data = await _supabase
+          .from('notes')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          _notes = List<Map<String, dynamic>>.from(data);
+          _filteredNotes = _notes; // Initialize filter
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching notes: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -88,10 +91,18 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
       results = _notes;
     } else {
       results = _notes
-          .where((note) =>
-              note["title"].toLowerCase().contains(keyword.toLowerCase()) ||
-              note["content"].toLowerCase().contains(keyword.toLowerCase()) ||
-              note["category"].toLowerCase().contains(keyword.toLowerCase()))
+          .where(
+            (note) =>
+                (note["title"] ?? '').toLowerCase().contains(
+                  keyword.toLowerCase(),
+                ) ||
+                (note["content"] ?? '').toLowerCase().contains(
+                  keyword.toLowerCase(),
+                ) ||
+                (note["category"] ?? '').toLowerCase().contains(
+                  keyword.toLowerCase(),
+                ),
+          )
           .toList();
     }
     setState(() {
@@ -99,14 +110,48 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
     });
   }
 
-  // --- INTRO GUIDE (METHODOLOGY) ---
+  // --- LOGIKA TAMBAH/EDIT DATA ---
+
+  void _addNewNote() async {
+    HapticFeedback.mediumImpact();
+
+    // --- PREMIUM CHECK ---
+    // If not Pro AND has 5 or more notes, block access
+    if (!widget.isPro && _notes.length >= 5) {
+      showPremiumDialog(context, featureName: "Unlimited Notes");
+      return;
+    }
+
+    // Go to Editor
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const NoteEditorScreen()),
+    );
+
+    // Refresh data on return
+    _fetchNotes();
+  }
+
+  void _editNote(Map<String, dynamic> currentNote) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        // Ensure NoteEditorScreen accepts 'existingNote'
+        builder: (context) => NoteEditorScreen(existingNote: currentNote),
+      ),
+    );
+    // Refresh data on return
+    _fetchNotes();
+  }
+
+  // --- INTRO GUIDE ---
   void _showIntroGuide() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.75, // Tinggi 75% layar
+        height: MediaQuery.of(context).size.height * 0.75,
         decoration: const BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
@@ -114,7 +159,6 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 20),
         child: Column(
           children: [
-            // Handle Bar (Garis kecil di atas)
             Container(
               width: 50,
               height: 5,
@@ -124,8 +168,6 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
               ),
             ),
             const SizedBox(height: 30),
-            
-            // Title
             const Text(
               "Unlock Your Second Brain",
               textAlign: TextAlign.center,
@@ -137,49 +179,43 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
               ),
             ),
             const SizedBox(height: 10),
-            
-            // Subtitle
             const Text(
               "Stop trying to remember everything. Use this method to free your mind.",
               textAlign: TextAlign.center,
-              style: TextStyle(color: AppColors.textMuted, fontSize: 14, height: 1.5),
+              style: TextStyle(
+                color: AppColors.textMuted,
+                fontSize: 14,
+                height: 1.5,
+              ),
             ),
             const SizedBox(height: 40),
-            
-            // --- The C.O.R.E / C.O.R Concept ---
-            
-            // 1. Capture
             _buildGuideItem(
               icon: Icons.bolt_rounded,
-              color: const Color(0xFFF59E0B), // Amber
+              color: const Color(0xFFF59E0B),
               title: "Capture Instantly",
-              desc: "Don't trust your memory. When you have an idea or insight, write it down immediately before it fades.",
+              desc:
+                  "Don't trust your memory. When you have an idea or insight, write it down immediately.",
             ),
-            
-            // 2. Organize
             _buildGuideItem(
               icon: Icons.folder_open_rounded,
-              color: const Color(0xFF6366F1), // Indigo
+              color: const Color(0xFF6366F1),
               title: "Organize by Context",
-              desc: "Categorize notes by Projects (active), Areas (ongoing), or Resources (reference). Keep it structured.",
+              desc:
+                  "Categorize notes by Projects (active) or Resources (reference). Keep it structured.",
             ),
-            
-            // 3. Retrieve
             _buildGuideItem(
               icon: Icons.search_rounded,
-              color: const Color(0xFF10B981), // Emerald
+              color: const Color(0xFF10B981),
               title: "Retrieve Anytime",
-              desc: "Use the search bar to find connections between old ideas and new projects effortlessly.",
+              desc:
+                  "Use the search bar to find connections between old ideas and new projects effortlessly.",
             ),
-            
             const Spacer(),
-            
-            // Start Button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textMain, // Dark button for premium feel
+                  backgroundColor: AppColors.textMain,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 18),
                   shape: RoundedRectangleBorder(
@@ -201,7 +237,6 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
     );
   }
 
-  // Widget Helper untuk Item Guide
   Widget _buildGuideItem({
     required IconData icon,
     required Color color,
@@ -245,70 +280,29 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
                 ),
               ],
             ),
-          )
+          ),
         ],
       ),
     );
   }
 
-  // --- LOGIKA TAMBAH/EDIT DATA ---
-  
-  // 1. Menambah Catatan Baru
-  void _addNewNote() async {
-    HapticFeedback.mediumImpact();
-    // Tunggu hasil (result) dari halaman editor
-    final newNote = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const NoteEditorScreen()),
-    );
-
-    // Jika ada data yang dikembalikan (user menekan tombol Save)
-    if (newNote != null) {
-      setState(() {
-        _notes.insert(0, newNote); // Masukkan ke paling atas
-        _runFilter(_searchController.text); // Refresh filter
-      });
-    }
-  }
-
-  // 2. Mengedit Catatan
-  void _editNote(int index, Map<String, dynamic> currentNote) async {
-    final updatedNote = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => NoteEditorScreen(existingNote: currentNote),
-      ),
-    );
-
-    if (updatedNote != null) {
-      setState(() {
-        // Cari index asli di _notes (karena _filteredNotes indexnya beda)
-        int realIndex = _notes.indexOf(currentNote);
-        if (realIndex != -1) {
-          _notes[realIndex] = updatedNote;
-          _runFilter(_searchController.text); // Refresh filter
-        }
-      });
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC), 
-      
-      // Floating Action Button
+      backgroundColor: const Color(0xFFF8FAFC),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: _addNewNote, // Panggil fungsi tambah
-        backgroundColor: AppColors.textMain, 
+        onPressed: _addNewNote,
+        backgroundColor: AppColors.textMain,
         elevation: 4,
         icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: const Text("Capture Idea", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        label: const Text(
+          "Capture Idea",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
       ),
-
       body: Stack(
         children: [
-          // --- Background Animations (Orbs) ---
+          // --- Background Animations ---
           Positioned(
             top: -100,
             left: -50,
@@ -334,20 +328,23 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
             child: Column(
               children: [
                 _buildHeader(context),
-                
-                // Search Bar Area
+
+                // Search Bar
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 10,
+                  ),
                   child: Container(
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
-                         BoxShadow(
+                        BoxShadow(
                           color: AppColors.shadow.withValues(alpha: 0.1),
                           blurRadius: 15,
                           offset: const Offset(0, 5),
-                        )
+                        ),
                       ],
                     ),
                     child: TextField(
@@ -355,10 +352,17 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
                       onChanged: _runFilter,
                       decoration: InputDecoration(
                         hintText: "Search your brain...",
-                        hintStyle: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.5)),
-                        prefixIcon: const Icon(Icons.search_rounded, color: AppColors.textMuted),
+                        hintStyle: TextStyle(
+                          color: AppColors.textMuted.withValues(alpha: 0.5),
+                        ),
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
+                          color: AppColors.textMuted,
+                        ),
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 16,
+                        ),
                       ),
                     ),
                   ),
@@ -368,29 +372,44 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
 
                 // Note List
                 Expanded(
-                  child: _filteredNotes.isEmpty
-                    ? _buildEmptyState()
-                    : ListView.builder(
-                        padding: const EdgeInsets.fromLTRB(24, 10, 24, 100), // Padding bawah agar tidak tertutup FAB
-                        physics: const BouncingScrollPhysics(),
-                        itemCount: _filteredNotes.length,
-                        itemBuilder: (context, index) {
-                          final note = _filteredNotes[index];
-                          
-                          // Menggunakan Widget NoteCard yang baru kita buat
-                          return FadeTransition(
-                            opacity: _fadeController,
-                            child: NoteCard(
-                              title: note['title'],
-                              content: note['content'],
-                              date: note['date'],
-                              category: note['category'],
-                              accentColor: note['color'], // Mengirim warna kategori
-                              onTap: () => _editNote(index, note), // Klik untuk edit
-                            ),
-                          );
-                        },
-                      ),
+                  child: _isLoading
+                      ? const Center(child: CircularProgressIndicator())
+                      : _filteredNotes.isEmpty
+                      ? _buildEmptyState()
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(24, 10, 24, 100),
+                          physics: const BouncingScrollPhysics(),
+                          itemCount: _filteredNotes.length,
+                          itemBuilder: (context, index) {
+                            final note = _filteredNotes[index];
+
+                            // --- PARSE COLOR FROM DB ---
+                            Color noteColor = const Color(
+                              0xFF6366F1,
+                            ); // Default
+                            if (note['color_hex'] != null) {
+                              try {
+                                noteColor = Color(int.parse(note['color_hex']));
+                              } catch (e) {
+                                // Fallback if hex is invalid
+                              }
+                            }
+
+                            return FadeTransition(
+                              opacity: _fadeController,
+                              child: NoteCard(
+                                title: note['title'] ?? 'Untitled',
+                                content: note['content'] ?? '',
+                                date:
+                                    note['created_at'] ??
+                                    DateTime.now().toIso8601String(),
+                                category: note['category'] ?? 'Uncategorized',
+                                accentColor: noteColor,
+                                onTap: () => _editNote(note),
+                              ),
+                            );
+                          },
+                        ),
                 ),
               ],
             ),
@@ -406,26 +425,68 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-           IconButton(
-            icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                size: 20, color: AppColors.textMain),
+          IconButton(
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              size: 20,
+              color: AppColors.textMain,
+            ),
             onPressed: () => Navigator.pop(context),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(),
           ),
-          const Text("Second Brain",
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                  color: AppColors.textMain)),
-          IconButton(
-            icon: const Icon(Icons.help_outline_rounded,
-                size: 24, color: AppColors.textMuted),
-            onPressed: () {
-              // Panggil fungsi intro guide disini jika perlu
-            },
-             padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(),
+
+          const Text(
+            "Second Brain",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              color: AppColors.textMain,
+            ),
+          ),
+
+          // Usage Counter / Help Icon
+          Row(
+            children: [
+              // Usage Badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: widget.isPro
+                      ? AppColors.primary.withValues(alpha: 0.1)
+                      : Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: (!widget.isPro && _notes.length >= 5)
+                        ? Colors.red.withValues(alpha: 0.5)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Text(
+                  widget.isPro ? "PRO" : "${_notes.length}/5",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: widget.isPro
+                        ? AppColors.primary
+                        : ((!widget.isPro && _notes.length >= 5)
+                              ? Colors.red
+                              : Colors.grey),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              IconButton(
+                icon: const Icon(
+                  Icons.help_outline_rounded,
+                  size: 24,
+                  color: AppColors.textMuted,
+                ),
+                onPressed: _showIntroGuide,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
         ],
       ),
@@ -437,7 +498,11 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.note_alt_outlined, size: 60, color: AppColors.textMuted.withValues(alpha: 0.3)),
+          Icon(
+            Icons.note_alt_outlined,
+            size: 60,
+            color: AppColors.textMuted.withValues(alpha: 0.3),
+          ),
           const SizedBox(height: 16),
           Text(
             "No thoughts found",
@@ -449,35 +514,37 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
   }
 }
 
-// Widget Orb untuk Background (Dicopy agar file ini bisa mandiri)
 class _AnimatedOrb extends StatelessWidget {
   final Color color;
   final double size;
   final AnimationController controller;
   final bool reverse;
 
-  const _AnimatedOrb(
-      {required this.color,
-      required this.size,
-      required this.controller,
-      this.reverse = false});
+  const _AnimatedOrb({
+    required this.color,
+    required this.size,
+    required this.controller,
+    this.reverse = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return ScaleTransition(
-      scale: Tween(begin: 1.0, end: 1.2).animate(CurvedAnimation(
-        parent: controller,
-        curve: reverse
-            ? const Interval(0.5, 1.0, curve: Curves.easeInOut)
-            : const Interval(0.0, 0.5, curve: Curves.easeInOut),
-      )),
+      scale: Tween(begin: 1.0, end: 1.2).animate(
+        CurvedAnimation(
+          parent: controller,
+          curve: reverse
+              ? const Interval(0.5, 1.0, curve: Curves.easeInOut)
+              : const Interval(0.0, 0.5, curve: Curves.easeInOut),
+        ),
+      ),
       child: Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            gradient:
-                RadialGradient(colors: [color, color.withValues(alpha: 0)])),
+          shape: BoxShape.circle,
+          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+        ),
       ),
     );
   }
