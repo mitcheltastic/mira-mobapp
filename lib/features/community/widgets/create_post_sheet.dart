@@ -171,7 +171,8 @@ class _CreatePostSheetState extends State<CreatePostSheet> {
                     onTap: () => setState(() => _imageFile = null),
                     child: CircleAvatar(
                       radius: 12,
-                      backgroundColor: Colors.black.withOpacity(0.5),
+                      // FIXED: Replaced withOpacity with withValues
+                      backgroundColor: Colors.black.withValues(alpha: 0.5),
                       child: const Icon(
                         Icons.close,
                         size: 16,

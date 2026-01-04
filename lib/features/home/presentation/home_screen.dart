@@ -1,13 +1,18 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+// Removed unused import: package:flutter/services.dart
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
+// --- IMPORTS FOR WIDGETS ---
 import '../../dashboard/widgets/dashboard_header.dart';
 import '../widgets/focus_card.dart';
 import '../widgets/tools_grid.dart';
 
+// --- IMPORT PREMIUM HELPER ---
+import '../../../core/utils/premium_helper.dart';
+
+// --- IMPORTS FOR FEATURES ---
 import '../../study_tools/presentation/ai_chat_screen.dart';
 import '../../study_tools/presentation/blurting_screen.dart';
 import '../../study_tools/presentation/eisenhower_screen.dart';
@@ -43,7 +48,13 @@ class _HomeScreenState extends State<HomeScreen>
   String _levelStatus = "Reguler";
   bool _isPro = false;
 
+  // --- PREMIUM LOGIC ---
+  // Define which features require a premium subscription
+  final List<String> _lockedFeatures = ["Blurting Method", "Flashcards"];
+
   // --- MASTER DATA ---
+  // Note: 'screen' is used as a fallback.
+  // We override navigation logic for Second Brain and Locked items in onTap.
   final List<Map<String, dynamic>> _masterSearchData = [
     {
       "title": "Pomodoro Timer",
@@ -83,7 +94,8 @@ class _HomeScreenState extends State<HomeScreen>
       "icon": Icons.psychology_rounded,
       "color": const Color(0xFF1E293B),
       "category": "Knowledge",
-      "screen": const SecondBrainScreen(),
+      // We will override this in onTap to pass 'isPro'
+      "screen": const SizedBox(),
     },
     {
       "title": "Eisenhower Matrix",
@@ -230,16 +242,9 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    SystemChrome.setSystemUIOverlayStyle(
-      const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent,
-        statusBarIconBrightness: Brightness.dark,
-      ),
-    );
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
-      body: Stack(
+    return Container(
+      color: const Color(0xFFFAFAFA),
+      child: Stack(
         children: [
           RepaintBoundary(child: _buildBackgroundDecoration()),
 
@@ -260,7 +265,6 @@ class _HomeScreenState extends State<HomeScreen>
                           ? const SizedBox(height: 10)
                           : Column(
                               children: [
-                                // --- UPDATED HEADER CALL ---
                                 DashboardHeader(
                                   userName: _userName,
                                   isPro: _isPro,
@@ -318,6 +322,7 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(height: 16),
+          // IMPORTANT: You should pass _isPro to ToolsGrid too if you want locks there!
           const ToolsGrid(),
         ],
       ),
@@ -354,12 +359,17 @@ class _HomeScreenState extends State<HomeScreen>
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(horizontal: 24),
-      shrinkWrap: true, // Important when nested
+      shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _searchResults.length,
       separatorBuilder: (c, i) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final item = _searchResults[index];
+        final title = item['title'];
+
+        // 1. Check if the feature is locked
+        final bool isLocked = _lockedFeatures.contains(title) && !_isPro;
+
         return Container(
           decoration: BoxDecoration(
             color: Colors.white,
@@ -384,7 +394,7 @@ class _HomeScreenState extends State<HomeScreen>
               child: Icon(item['icon'], color: item['color'], size: 24),
             ),
             title: Text(
-              item['title'],
+              title,
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
                 color: AppColors.textMain,
@@ -394,16 +404,37 @@ class _HomeScreenState extends State<HomeScreen>
               item['desc'],
               style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
-            trailing: const Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 14,
-              color: AppColors.textMuted,
-            ),
+            // 2. Show Lock icon if locked
+            trailing: isLocked
+                ? Icon(Icons.lock_rounded, size: 20, color: Colors.amber[700])
+                : const Icon(
+                    Icons.arrow_forward_ios_rounded,
+                    size: 14,
+                    color: AppColors.textMuted,
+                  ),
             onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => item['screen']),
-              );
+              // 3. Intercept Navigation
+              if (isLocked) {
+                showPremiumDialog(context, featureName: title);
+                return;
+              }
+
+              // 4. Special navigation for Second Brain (Pass isPro)
+              if (title == "Second Brain") {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    // Ensure SecondBrainScreen accepts this parameter
+                    builder: (context) => SecondBrainScreen(isPro: _isPro),
+                  ),
+                );
+              } else {
+                // Normal navigation
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => item['screen']),
+                );
+              }
             },
           ),
         );

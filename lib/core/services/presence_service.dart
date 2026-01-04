@@ -38,9 +38,11 @@ class PresenceService {
             // Each 'state' is a SinglePresenceState object containing a 'presences' list
             for (final presence in state.presences) {
               // The actual data is inside 'payload'
-              final Map<String, dynamic>? data = presence.payload;
+              // FIX: Removed '?' because payload is non-nullable
+              final Map<String, dynamic> data = presence.payload;
 
-              if (data != null && data.containsKey('user_id')) {
+              // Removed 'data != null' check
+              if (data.containsKey('user_id')) {
                 activeIds.add(data['user_id'] as String);
               }
             }
