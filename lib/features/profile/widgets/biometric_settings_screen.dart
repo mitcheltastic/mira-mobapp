@@ -21,7 +21,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
   bool _isBiometricEnabled = false;
   bool _isLoading = true;
   bool _canCheckBiometrics = false;
-  bool _isSocialLogin = false; // New flag to track login type
+  bool _isSocialLogin = false;
   String? _currentUserEmail;
 
   @override
@@ -40,8 +40,6 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
         return;
       }
 
-      // 1. Detect if user is using Google/Social login
-      // 'email' provider usually means password-based. 'google' is social.
       final String provider = user?.appMetadata['provider'] ?? 'email';
       _isSocialLogin = provider != 'email';
 
@@ -91,7 +89,8 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Biometric login disabled for this account"),
+            content: Text("Biometric login disabled"),
+            backgroundColor: Colors.grey,
           ),
         );
       }
@@ -123,10 +122,10 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                 children: [
                   Text(
                     _isSocialLogin
-                        ? "Enable biometric login for $_currentUserEmail? This will allow you to sign in faster next time."
-                        : "To enable biometric login for $_currentUserEmail, please enter your password to save it securely.",
+                        ? "Enable biometric login for $_currentUserEmail?"
+                        : "Enter your password to securely enable biometric login.",
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 14,
                       color: AppColors.textMuted,
                     ),
                   ),
@@ -143,16 +142,12 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(context),
-                  child: const Text(
-                    "Cancel",
-                    style: TextStyle(color: Colors.grey),
-                  ),
+                  child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
                 ),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    foregroundColor:
-                        Colors.white, // <--- ADD THIS LINE (Fixes the color)
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -167,7 +162,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
 
                           try {
                             bool authenticated = await auth.authenticate(
-                              localizedReason: 'Scan to enable biometrics',
+                              localizedReason: 'Scan to confirm setup',
                               options: const AuthenticationOptions(
                                 stickyAuth: true,
                               ),
@@ -205,15 +200,12 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                               Navigator.pop(context);
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text(
-                                    "Biometrics enabled successfully!",
-                                  ),
+                                  content: Text("Biometrics enabled!"),
                                   backgroundColor: AppColors.success,
                                 ),
                               );
                             }
                           } catch (e) {
-                            debugPrint("Error setup: $e");
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(content: Text("Error: $e")),
@@ -230,11 +222,9 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                           width: 20,
                           height: 20,
                           child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
+                              color: Colors.white, strokeWidth: 2),
                         )
-                      : const Text("Enable & Save"),
+                      : const Text("Confirm"),
                 ),
               ],
             );
@@ -244,151 +234,201 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
     );
   }
 
+  // --- UI BUILD ---
   @override
   Widget build(BuildContext context) {
+    // Tentukan warna status: HIJAU (Success) jika aktif
+    final statusColor = _isBiometricEnabled ? AppColors.success : Colors.grey;
+    final statusText = _isBiometricEnabled ? "Active" : "Inactive";
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA),
+      backgroundColor: const Color(0xFFF8FAFC),
       appBar: AppBar(
         title: const Text(
           "Biometric Settings",
           style: TextStyle(
             color: AppColors.textMain,
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
           ),
         ),
+        centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_ios_new_rounded,
             color: AppColors.textMain,
+            size: 20,
           ),
           onPressed: () => Navigator.pop(context),
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Padding(
+          ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(24.0),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 20),
+                  
+                  // 1. HERO ICON SECTION
+                  Center(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 120,
+                          height: 120,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: statusColor.withValues(alpha: 0.1),
+                            border: Border.all(
+                              color: statusColor.withValues(alpha: 0.3),
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.fingerprint_rounded,
+                            size: 64,
+                            color: statusColor,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 16, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: statusColor.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            statusText.toUpperCase(),
+                            style: TextStyle(
+                              color: statusColor,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                              letterSpacing: 1.0,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  const SizedBox(height: 40),
+
+                  // 2. TOGGLE CARD
                   Container(
-                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(24),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
+                          color: Colors.black.withValues(alpha: 0.04),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
                         ),
                       ],
                     ),
                     child: Column(
                       children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: _canCheckBiometrics
-                                    ? AppColors.primary.withValues(alpha: 0.1)
-                                    : Colors.grey.withValues(alpha: 0.1),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.fingerprint_rounded,
-                                size: 28,
-                                color: _canCheckBiometrics
-                                    ? AppColors.primary
-                                    : Colors.grey,
-                              ),
+                        SwitchListTile.adaptive(
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(24)),
+                          activeTrackColor: AppColors.success, 
+                          activeThumbColor: Colors.white, 
+
+                          title: const Text(
+                            "Biometric Login",
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textMain,
+                              fontSize: 16,
                             ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    "Biometric Login",
-                                    style: TextStyle(
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textMain,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _canCheckBiometrics
-                                        ? "Use fingerprint or face ID to log in."
-                                        : "Biometrics not available.",
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppColors.textMuted.withValues(
-                                        alpha: 0.8,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
+                          ),
+                          subtitle: Text(
+                            _canCheckBiometrics
+                                ? "Log in faster with your face or fingerprint."
+                                : "Not available on this device.",
+                            style: TextStyle(
+                              color: AppColors.textMuted.withValues(alpha: 0.8),
+                              fontSize: 13,
                             ),
-                            if (_canCheckBiometrics)
-                              Switch.adaptive(
-                                value: _isBiometricEnabled,
-                                activeTrackColor: AppColors.primary,
-                                onChanged: _toggleBiometric,
-                              ),
-                          ],
+                          ),
+                          value: _isBiometricEnabled,
+                          onChanged: _canCheckBiometrics ? _toggleBiometric : null,
                         ),
                       ],
                     ),
                   ),
+
                   const SizedBox(height: 24),
 
-                  // 4. Hide "Update Password" button for social users
-                  if (_isBiometricEnabled && !_isSocialLogin) ...[
-                    const Text(
-                      "Changed your password?",
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 50,
-                      child: OutlinedButton(
-                        onPressed: _showSetupDialog,
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          side: const BorderSide(color: AppColors.primary),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: const Text(
-                          "Update Biometric Credentials",
-                          style: TextStyle(
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                          ),
+                  // 3. UPDATE CREDENTIALS INFO BOX
+                  if (_isBiometricEnabled && !_isSocialLogin)
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.2),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      "If you changed your account password recently, please update it here so biometric login continues to work.",
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              const Icon(Icons.info_outline_rounded,
+                                  color: Colors.blue, size: 20),
+                              const SizedBox(width: 10),
+                              const Text(
+                                "Did you change your password?",
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textMain,
+                                  fontSize: 14,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            "If you recently changed your account password, you need to update it here to keep biometric login working.",
+                            style: TextStyle(
+                              color: AppColors.textMuted,
+                              fontSize: 13,
+                              height: 1.4,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _showSetupDialog,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white,
+                                foregroundColor: Colors.blue,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                  side: BorderSide(
+                                      color: Colors.blue.withValues(alpha: 0.3)),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              child: const Text(
+                                "Update Credentials",
+                                style: TextStyle(fontWeight: FontWeight.w700),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
                 ],
               ),
             ),

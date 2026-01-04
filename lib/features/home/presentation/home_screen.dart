@@ -38,7 +38,7 @@ class _HomeScreenState extends State<HomeScreen>
   late Animation<double> _bgAnimation;
 
   // --- STATE DATA (Dynamic) ---
-  String _userName = "Friend";
+  String _userName = "User";
   String? _avatarUrl;
   String _levelStatus = "Reguler";
   bool _isPro = false;
@@ -161,7 +161,7 @@ class _HomeScreenState extends State<HomeScreen>
         if (mounted) {
           setState(() {
             if (profileData != null) {
-              String fullName = profileData['nickname'] ?? "Friend";
+              String fullName = profileData['nickname'] ?? "User";
               _userName = fullName.split(' ')[0]; // Take first name
               _avatarUrl = profileData['avatar_url'];
 
@@ -266,7 +266,7 @@ class _HomeScreenState extends State<HomeScreen>
                                   isPro: _isPro,
                                   avatarUrl: _avatarUrl,
                                   isLoading: _isLoadingHeader,
-                                  onAvatarTap: () => widget.onSwitchTab(3),
+                                  onAvatarTap: () => widget.onSwitchTab(4),
                                 ),
                                 const SizedBox(height: 8),
                               ],

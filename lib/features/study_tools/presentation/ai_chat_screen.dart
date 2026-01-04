@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // For API Key security
-import 'package:google_generative_ai/google_generative_ai.dart'; // Gemini API
-import 'package:supabase_flutter/supabase_flutter.dart'; // Database
+import 'package:flutter_dotenv/flutter_dotenv.dart'; 
+import 'package:google_generative_ai/google_generative_ai.dart'; 
+import 'package:supabase_flutter/supabase_flutter.dart'; 
 import '../../../core/constant/app_colors.dart';
-import '../../profile/widgets/subscription_screen.dart'; // For upgrading
+import '../../profile/widgets/subscription_screen.dart'; 
 
 class AIChatScreen extends StatefulWidget {
   const AIChatScreen({super.key});
@@ -16,7 +16,6 @@ class AIChatScreen extends StatefulWidget {
 
 class _AIChatScreenState extends State<AIChatScreen> {
   // --- CONFIG ---
-  // Load API Key safely from .env
   final String _apiKey = dotenv.env['GEMINI_API_KEY'] ?? "";
 
   late final GenerativeModel _model;
@@ -32,44 +31,53 @@ class _AIChatScreenState extends State<AIChatScreen> {
   bool _isPro = false;
   bool _isLoadingLimit = true;
 
-  // Suggestions for empty state
-  final List<String> _suggestions = [
+  final List<String> _masterSuggestions = [
     "Explain Quantum Physics like I'm 5",
     "Create a study plan for Finals",
     "Summarize the key points of WW2",
     "Quiz me on Biology",
+    "How to focus better?",
+    "Explain the Pythagorean theorem",
+    "Give me essay topic ideas about Technology",
+    "What is the best way to learn a new language?",
+    "Summarize 'Romeo and Juliet'",
+    "Help me organize my daily schedule",
+    "Explain Photosynthesis simply",
+    "Tips for public speaking",
   ];
+
+  late List<String> _displayedSuggestions;
 
   @override
   void initState() {
     super.initState();
 
-    // 1. Safety Check
+    _masterSuggestions.shuffle(); 
+    _displayedSuggestions = _masterSuggestions.take(4).toList();
+
     if (_apiKey.isEmpty) {
       debugPrint("ERROR: GEMINI_API_KEY is missing in .env file!");
     } else {
-      // 2. Initialize Gemini with a "Persona"
       _model = GenerativeModel(
         model: 'gemini-2.5-flash',
         apiKey: _apiKey,
-        // THIS IS THE BRAIN IMPLANT 👇
         systemInstruction: Content.system("""
-          You are Mira AI, the intelligent study assistant inside the 'Mira' app (Mastering Information Retention App).
+          You are Mira AI, the intelligent study assistant inside the 'Mira' app.
           Your goal is to help students learn faster and remember longer.
-
-          The Mira app has these specific tools you can recommend to users:
-          1. 🍅 Pomodoro Timer: For focused work with breaks.
-          2. 🧠 Feynman Method: To learn by explaining concepts simply.
-          3. 🃏 Flashcards: For active recall and testing memory.
-          4. 📝 Blurting Method: To write down everything they remember to test knowledge gaps.
-          5. 📊 Eisenhower Matrix: To prioritize urgent vs. important tasks.
-          6. 🧠 Second Brain: To organize notes and digital knowledge.
+          
+          Tools you can recommend:
+          1. 🍅 Pomodoro Timer
+          2. 🧠 Feynman Method
+          3. 🃏 Flashcards
+          4. 📝 Blurting Method
+          5. 📊 Eisenhower Matrix
+          6. 🧠 Second Brain
 
           GUIDELINES:
-          - If a user feels overwhelmed, suggest the Eisenhower Matrix.
-          - If a user can't focus, suggest the Pomodoro Timer.
-          - If a user wants to memorize terms, suggest Flashcards.
-          - Keep answers concise, encouraging, and academic but friendly.
+          - Suggest Eisenhower Matrix for overwhelmed users.
+          - Suggest Pomodoro for focus issues.
+          - Suggest Flashcards for memorization.
+          - Keep answers concise, encouraging, and academic.
           - Never say "I am a large language model." Say "I am Mira AI."
         """),
       );
@@ -87,20 +95,18 @@ class _AIChatScreenState extends State<AIChatScreen> {
     super.dispose();
   }
 
-  // --- 1. SUPABASE LIMIT LOGIC ---
+  // --- SUPABASE & LOGIC (TIDAK DIUBAH) ---
   Future<void> _checkUserLimitStatus() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      // A. Check Level (Pro vs Reguler)
       final levelData = await Supabase.instance.client
           .from('level')
           .select('status')
           .eq('id', user.id)
           .maybeSingle();
 
-      // B. Check Counters
       final limitData = await Supabase.instance.client
           .from('limitation')
           .select()
@@ -110,20 +116,16 @@ class _AIChatScreenState extends State<AIChatScreen> {
       if (mounted) {
         setState(() {
           final status = levelData?['status'] ?? 'Reguler';
-          // Check if status is one of the premium types
           _isPro = status == 'Monthly Premium' || status == 'Yearly Premium';
 
           if (limitData != null) {
-            // Check Date Reset
             final String lastDate = limitData['last_reset_date'] ?? "";
             final String today = DateTime.now().toIso8601String().split('T')[0];
 
             if (lastDate != today) {
-              // It's a new day! Reset counter in DB
               _resetDailyLimit(user.id);
               _remainingChats = 10;
             } else {
-              // Same day, calculate remaining
               int used = limitData['chatbot_counter'] ?? 0;
               _remainingChats = 10 - used;
             }
@@ -152,7 +154,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
     if (user == null) return;
 
     try {
-      // 1. Get current count
       final data = await Supabase.instance.client
           .from('limitation')
           .select('chatbot_counter')
@@ -161,13 +162,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
       int current = data['chatbot_counter'] ?? 0;
 
-      // 2. Update + 1
       await Supabase.instance.client
           .from('limitation')
           .update({'chatbot_counter': current + 1})
           .eq('id', user.id);
 
-      // 3. Update Local State (only matters for free users)
       if (mounted && !_isPro) {
         setState(() {
           _remainingChats--;
@@ -178,12 +177,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
   }
 
-  // --- 2. SEND MESSAGE LOGIC ---
   Future<void> _handleSubmitted(String text) async {
     if (text.trim().isEmpty) return;
 
-    // --- GATEKEEPER: CHECK LIMIT ---
-    // If not Pro AND no chats remaining, block them.
     if (!_isPro && _remainingChats <= 0) {
       _showUpgradeDialog();
       return;
@@ -192,19 +188,17 @@ class _AIChatScreenState extends State<AIChatScreen> {
     _textController.clear();
     FocusScope.of(context).unfocus();
 
-    // 1. Add User Message to UI
     setState(() {
       _messages.add(
         ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
       );
-      _isTyping = true; // Show loading animation
+      _isTyping = true;
     });
     _scrollToBottom();
 
     try {
-      // 2. Call Gemini API
       if (_apiKey.isEmpty) {
-        throw Exception("API Key not found. Please check .env file.");
+        throw Exception("API Key not found.");
       }
 
       final content = [Content.text(text)];
@@ -222,8 +216,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
           );
         });
         _scrollToBottom();
-
-        // 3. Increment DB Counter (Only if successful)
         await _incrementUsageCounter();
       }
     } catch (e) {
@@ -251,10 +243,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text(
-              "Wait for Tomorrow",
-              style: TextStyle(color: Colors.grey),
-            ),
+            child: const Text("Wait for Tomorrow", style: TextStyle(color: Colors.grey)),
           ),
           ElevatedButton(
             onPressed: () {
@@ -262,18 +251,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (c) => const SubscriptionScreen()),
-              ).then((_) => _checkUserLimitStatus()); // Refresh on return
+              ).then((_) => _checkUserLimitStatus());
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF0F172A),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: const Text(
-              "Upgrade Now",
-              style: TextStyle(color: Colors.white),
-            ),
+            child: const Text("Upgrade Now", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -306,14 +290,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       appBar: _buildAppBar(),
       body: Column(
         children: [
-          // LIMIT INDICATOR (Only for Free Users)
           if (!_isPro && !_isLoadingLimit)
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 16),
               color: _remainingChats > 0
-                  ? const Color(0xFFFFF7ED) // Light Orange
-                  : const Color(0xFFFEF2F2), // Light Red
+                  ? const Color(0xFFFFF7ED)
+                  : const Color(0xFFFEF2F2),
               child: Text(
                 _remainingChats > 0
                     ? "$_remainingChats free messages left today"
@@ -321,30 +304,23 @@ class _AIChatScreenState extends State<AIChatScreen> {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: _remainingChats > 0
-                      ? Colors.orange[800]
-                      : Colors.red[800],
+                  color: _remainingChats > 0 ? Colors.orange[800] : Colors.red[800],
                   fontWeight: FontWeight.w600,
                 ),
               ),
             ),
 
-          // CHAT AREA
           Expanded(
             child: _messages.isEmpty ? _buildEmptyState() : _buildMessageList(),
           ),
 
-          // TYPING INDICATOR
           if (_isTyping) _buildTypingIndicator(),
 
-          // INPUT FIELD
           _buildInputArea(),
         ],
       ),
     );
   }
-
-  // --- WIDGETS ---
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
@@ -352,11 +328,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       elevation: 0,
       centerTitle: false,
       leading: IconButton(
-        icon: const Icon(
-          Icons.arrow_back_ios_new_rounded,
-          color: AppColors.textMain,
-          size: 20,
-        ),
+        icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.textMain, size: 20),
         onPressed: () => Navigator.pop(context),
       ),
       title: Row(
@@ -367,11 +339,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
               color: AppColors.primary.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.auto_awesome,
-              color: AppColors.primary,
-              size: 18,
-            ),
+            child: const Icon(Icons.auto_awesome, color: AppColors.primary, size: 18),
           ),
           const SizedBox(width: 10),
           Column(
@@ -379,29 +347,19 @@ class _AIChatScreenState extends State<AIChatScreen> {
             children: [
               const Text(
                 "AI Assistant",
-                style: TextStyle(
-                  color: AppColors.textMain,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(color: AppColors.textMain, fontSize: 16, fontWeight: FontWeight.bold),
               ),
               Row(
                 children: [
                   Container(
                     width: 6,
                     height: 6,
-                    decoration: const BoxDecoration(
-                      color: AppColors.success,
-                      shape: BoxShape.circle,
-                    ),
+                    decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
                   ),
                   const SizedBox(width: 4),
                   Text(
                     _isPro ? "Unlimited Access" : "Basic Plan",
-                    style: TextStyle(
-                      color: AppColors.textMuted.withValues(alpha: 0.8),
-                      fontSize: 11,
-                    ),
+                    style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.8), fontSize: 11),
                   ),
                 ],
               ),
@@ -411,10 +369,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
       ),
       actions: [
         IconButton(
-          icon: const Icon(
-            Icons.delete_outline_rounded,
-            color: AppColors.textMuted,
-          ),
+          icon: const Icon(Icons.delete_outline_rounded, color: AppColors.textMuted),
           onPressed: () {
             setState(() => _messages.clear());
           },
@@ -447,20 +402,12 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   ),
                 ],
               ),
-              child: const Icon(
-                Icons.smart_toy_rounded,
-                size: 40,
-                color: AppColors.primary,
-              ),
+              child: const Icon(Icons.smart_toy_rounded, size: 40, color: AppColors.primary),
             ),
             const SizedBox(height: 24),
             const Text(
               "How can I help you study?",
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textMain,
-              ),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textMain),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -473,13 +420,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
               spacing: 12,
               runSpacing: 12,
               alignment: WrapAlignment.center,
-              children: _suggestions.map((suggestion) {
+              // MENGGUNAKAN LIST YANG SUDAH DIACAK
+              children: _displayedSuggestions.map((suggestion) {
                 return ActionChip(
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 8,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   backgroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(20),
@@ -487,10 +432,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   ),
                   label: Text(
                     suggestion,
-                    style: const TextStyle(
-                      color: AppColors.textMain,
-                      fontSize: 13,
-                    ),
+                    style: const TextStyle(color: AppColors.textMain, fontSize: 13),
                   ),
                   onPressed: () => _handleSubmitted(suggestion),
                 );
@@ -555,15 +497,13 @@ class _AIChatScreenState extends State<AIChatScreen> {
       builder: (context, value, child) {
         return Opacity(
           opacity: (value + index * 0.3) % 1.0 > 0.5 ? 1.0 : 0.3,
-          child: const CircleAvatar(
-            radius: 3,
-            backgroundColor: AppColors.textMuted,
-          ),
+          child: const CircleAvatar(radius: 3, backgroundColor: AppColors.textMuted),
         );
       },
     );
   }
 
+  // --- MODIFIKASI 2: INPUT AREA YANG BISA MEMANJANG KE BAWAH ---
   Widget _buildInputArea() {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 30),
@@ -578,17 +518,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ],
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          IconButton(
-            icon: const Icon(
-              Icons.add_circle_outline_rounded,
-              color: AppColors.textMuted,
-            ),
-            onPressed: () {},
-          ),
           Expanded(
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8), // Padding vertikal disesuaikan
               decoration: BoxDecoration(
                 color: AppColors.background,
                 borderRadius: BorderRadius.circular(24),
@@ -598,37 +532,42 @@ class _AIChatScreenState extends State<AIChatScreen> {
                 focusNode: _focusNode,
                 textCapitalization: TextCapitalization.sentences,
                 onSubmitted: _handleSubmitted,
+                
+                // INI KUNCI AGAR TEKS TURUN KE BAWAH (MULTILINE)
+                minLines: 1,
+                maxLines: 5, // Maksimal memanjang 5 baris, setelah itu scroll
+                keyboardType: TextInputType.multiline,
+                
                 decoration: InputDecoration(
                   hintText: "Ask anything...",
                   hintStyle: TextStyle(
                     color: AppColors.textMuted.withValues(alpha: 0.6),
                   ),
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(vertical: 14),
+                  contentPadding: const EdgeInsets.symmetric(vertical: 4), // Padding textfield diperkecil
                 ),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () => _handleSubmitted(_textController.text),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.3),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.send_rounded,
-                color: Colors.white,
-                size: 20,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4), // Sesuaikan posisi tombol kirim
+            child: GestureDetector(
+              onTap: () => _handleSubmitted(_textController.text),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
               ),
             ),
           ),
@@ -645,11 +584,7 @@ class ChatMessage {
   final bool isUser;
   final DateTime timestamp;
 
-  ChatMessage({
-    required this.text,
-    required this.isUser,
-    required this.timestamp,
-  });
+  ChatMessage({required this.text, required this.isUser, required this.timestamp});
 }
 
 class ChatBubble extends StatelessWidget {
@@ -664,9 +599,7 @@ class ChatBubble extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: Row(
-        mainAxisAlignment: isUser
-            ? MainAxisAlignment.end
-            : MainAxisAlignment.start,
+        mainAxisAlignment: isUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (!isUser) ...[
@@ -677,11 +610,7 @@ class ChatBubble extends StatelessWidget {
                 color: AppColors.primary.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
-                Icons.auto_awesome,
-                color: AppColors.primary,
-                size: 14,
-              ),
+              child: const Icon(Icons.auto_awesome, color: AppColors.primary, size: 14),
             ),
           ],
           Flexible(
