@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:timeago/timeago.dart' as timeago;
-import '../../../../core/constant/app_colors.dart';
+import '../../../core/constant/app_colors.dart';
 
 class CommentsSheet extends StatefulWidget {
   final String postId;
@@ -17,16 +17,38 @@ class _CommentsSheetState extends State<CommentsSheet> {
   final TextEditingController _commentController = TextEditingController();
   final FocusNode _focusNode = FocusNode();
 
-  bool _isComposing = false;
+  late Stream<List<Map<String, dynamic>>> _commentsStream;
+
+  // 1. Profile Cache (Prevents freezing by avoiding repeated fetches)
+  final Map<String, Map<String, dynamic>> _profileCache = {};
+
+  // 2. Pending comments (Optimistic UI)
+  final List<Map<String, dynamic>> _pendingComments = [];
+  Map<String, dynamic>? _myProfile;
+  Map<String, dynamic>? _replyingTo;
 
   @override
   void initState() {
     super.initState();
-    _commentController.addListener(() {
-      setState(() {
-        _isComposing = _commentController.text.trim().isNotEmpty;
-      });
-    });
+    _loadUserProfile();
+    _commentsStream = _getCommentsStream();
+  }
+
+  Future<void> _loadUserProfile() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    try {
+      final data = await _supabase
+          .from('profiles')
+          .select('full_name, nickname, avatar_url')
+          .eq('id', userId)
+          .single();
+      if (mounted) {
+        setState(() => _myProfile = data);
+      }
+    } catch (e) {
+      debugPrint("Error loading profile: $e");
+    }
   }
 
   @override
@@ -41,42 +63,105 @@ class _CommentsSheetState extends State<CommentsSheet> {
         .from('comments')
         .stream(primaryKey: ['id'])
         .eq('post_id', widget.postId)
-        .order('created_at', ascending: false)
+        .order('created_at', ascending: true)
         .asyncMap((data) async {
-          final futures = data.map((comment) async {
-            final profile = await _supabase
-                .from('profiles')
-                .select()
-                .eq('id', comment['user_id'])
-                .single();
+          if (data.isEmpty) return <Map<String, dynamic>>[];
 
-            return {...comment, 'profile': profile};
-          });
-          return await Future.wait(futures);
+          // 1. Identify which profiles we don't have yet
+          final userIds = data.map((e) => e['user_id'] as String).toSet();
+          final missingIds = userIds
+              .where((id) => !_profileCache.containsKey(id))
+              .toList();
+
+          // 2. Fetch ONLY missing profiles (This prevents the freeze)
+          if (missingIds.isNotEmpty) {
+            try {
+              final profilesData = await _supabase
+                  .from('profiles')
+                  .select()
+                  .filter('id', 'in', missingIds);
+
+              for (var p in profilesData) {
+                _profileCache[p['id'] as String] = p;
+              }
+            } catch (e) {
+              debugPrint("Error fetching profiles: $e");
+              // Continue anyway so comments still load even if profiles fail
+            }
+          }
+
+          // 3. Merge data using Cache
+          return data.map((comment) {
+            final userId = comment['user_id'];
+            final profile = _profileCache[userId] ?? {};
+            return {
+              ...comment,
+              'user_name':
+                  profile['full_name'] ?? profile['nickname'] ?? 'User',
+              'user_avatar': profile['avatar_url'],
+            };
+          }).toList();
         });
   }
 
-  void _handleSubmitted() async {
-    if (!_isComposing) return;
+  void _onReplyTap(Map<String, dynamic> comment) {
+    setState(() => _replyingTo = comment);
+    FocusScope.of(context).requestFocus(_focusNode);
+  }
 
-    final content = _commentController.text.trim();
+  void _cancelReply() {
+    setState(() => _replyingTo = null);
+    _focusNode.unfocus();
+  }
+
+  Future<void> _handleSubmitted(String text) async {
+    final content = text.trim();
+    if (content.isEmpty) return;
+
+    final parentId = _replyingTo?['id'];
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
     _commentController.clear();
-    setState(() => _isComposing = false);
+    _focusNode.unfocus();
+
+    // 1. Create Fake Comment
+    final tempId = DateTime.now().toIso8601String();
+    final optimisticComment = {
+      'id': tempId,
+      'user_id': myId,
+      'content': content,
+      'created_at': DateTime.now().toIso8601String(),
+      'parent_id': parentId,
+      'user_name': _myProfile?['full_name'] ?? _myProfile?['nickname'] ?? 'Me',
+      'user_avatar': _myProfile?['avatar_url'],
+      'is_pending': true,
+    };
+
+    // 2. Add to list immediately
+    setState(() {
+      _pendingComments.add(optimisticComment);
+      _replyingTo = null;
+    });
 
     try {
-      final user = _supabase.auth.currentUser;
-      if (user == null) return;
-
+      // 3. Send to DB
       await _supabase.from('comments').insert({
         'post_id': widget.postId,
-        'user_id': user.id,
+        'user_id': myId,
         'content': content,
+        'parent_id': parentId,
       });
+
+      // No cleanup needed; StreamBuilder deduplication handles it.
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _pendingComments.removeWhere((c) => c['id'] == tempId);
+        });
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text("Failed to post comment: $e")));
+        ).showSnackBar(SnackBar(content: Text("Failed to post: $e")));
       }
     }
   }
@@ -93,7 +178,7 @@ class _CommentsSheetState extends State<CommentsSheet> {
       ),
       child: Column(
         children: [
-          // --- HEADER ---
+          // Header
           Container(
             padding: const EdgeInsets.symmetric(vertical: 12),
             decoration: BoxDecoration(
@@ -122,24 +207,40 @@ class _CommentsSheetState extends State<CommentsSheet> {
             ),
           ),
 
-          // --- LIST AREA ---
+          // List Area
           Expanded(
             child: StreamBuilder<List<Map<String, dynamic>>>(
-              stream: _getCommentsStream(),
+              stream: _commentsStream,
               builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text("Error: ${snapshot.error}"));
-                }
-                if (!snapshot.hasData) {
+                final streamComments = snapshot.data ?? [];
+
+                // --- DEDUPLICATION LOGIC ---
+                // Filter out pending comments that have arrived in the real stream
+                final visiblePendingComments = _pendingComments.where((
+                  pending,
+                ) {
+                  final isAlreadyInStream = streamComments.any(
+                    (real) =>
+                        real['content'] == pending['content'] &&
+                        real['user_id'] == pending['user_id'],
+                  );
+                  return !isAlreadyInStream;
+                }).toList();
+
+                final allComments = [
+                  ...streamComments,
+                  ...visiblePendingComments,
+                ];
+
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    allComments.isEmpty) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final comments = snapshot.data!;
-
-                if (comments.isEmpty) {
+                if (allComments.isEmpty) {
                   return Center(
                     child: Text(
-                      "No comments yet.\nBe the first to say something!",
+                      "No comments yet.\nBe the first to share your thoughts!",
                       textAlign: TextAlign.center,
                       style: TextStyle(color: Colors.grey[400]),
                     ),
@@ -151,90 +252,171 @@ class _CommentsSheetState extends State<CommentsSheet> {
                     horizontal: 20,
                     vertical: 20,
                   ),
-                  itemCount: comments.length,
-                  separatorBuilder: (context, index) =>
-                      const SizedBox(height: 24),
+                  itemCount: allComments.length,
+                  separatorBuilder: (context, index) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Divider(height: 1, color: Colors.grey[100]),
+                  ),
                   itemBuilder: (context, index) {
-                    final comment = comments[index];
-                    return _CommentItem(data: comment);
+                    final comment = allComments[index];
+                    return _CommentItem(
+                      data: comment,
+                      onReply: () => _onReplyTap(comment),
+                    );
                   },
                 );
               },
             ),
           ),
 
-          // --- INPUT AREA ---
-          Container(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, keyboardPadding + 12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, -4),
-                ),
-              ],
+          // Reply Banner
+          if (_replyingTo != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: const Color(0xFFF1F5F9),
+              child: Row(
+                children: [
+                  Icon(Icons.reply, size: 16, color: Colors.grey[600]),
+                  const SizedBox(width: 8),
+                  Text(
+                    "Replying to ${_replyingTo!['user_name']}",
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  InkWell(
+                    onTap: _cancelReply,
+                    child: const Icon(
+                      Icons.close,
+                      size: 18,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
             ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                // REMOVED: CircleAvatar was here
 
-                // Text Field
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F5F9),
-                      borderRadius: BorderRadius.circular(24),
-                    ),
-                    child: TextField(
-                      controller: _commentController,
-                      focusNode: _focusNode,
-                      minLines: 1,
-                      maxLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.textMain,
-                      ),
-                      decoration: const InputDecoration(
-                        hintText: "Add a comment...",
-                        hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 10),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
+          // Input Area
+          _CommentInput(
+            controller: _commentController,
+            focusNode: _focusNode,
+            paddingBottom: keyboardPadding,
+            onSubmit: _handleSubmitted,
+            isReplying: _replyingTo != null,
+          ),
+        ],
+      ),
+    );
+  }
+}
 
-                // Send Button
-                InkWell(
-                  onTap: _isComposing ? _handleSubmitted : null,
-                  borderRadius: BorderRadius.circular(50),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: _isComposing
-                          ? AppColors.primary
-                          : AppColors.primary.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.arrow_upward_rounded,
-                      color: _isComposing ? Colors.white : AppColors.primary,
-                      size: 20,
-                    ),
-                  ),
+class _CommentInput extends StatefulWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final double paddingBottom;
+  final Function(String) onSubmit;
+  final bool isReplying;
+
+  const _CommentInput({
+    required this.controller,
+    required this.focusNode,
+    required this.paddingBottom,
+    required this.onSubmit,
+    required this.isReplying,
+  });
+
+  @override
+  State<_CommentInput> createState() => _CommentInputState();
+}
+
+class _CommentInputState extends State<_CommentInput> {
+  bool _isComposing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_checkText);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_checkText);
+    super.dispose();
+  }
+
+  void _checkText() {
+    final isNotEmpty = widget.controller.text.trim().isNotEmpty;
+    if (_isComposing != isNotEmpty) {
+      setState(() => _isComposing = isNotEmpty);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(16, 12, 16, widget.paddingBottom + 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: TextField(
+                controller: widget.controller,
+                focusNode: widget.focusNode,
+                minLines: 1,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                style: const TextStyle(fontSize: 14, color: AppColors.textMain),
+                decoration: InputDecoration(
+                  hintText: widget.isReplying
+                      ? "Write a reply..."
+                      : "Add a comment...",
+                  hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+                  border: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 10),
                 ),
-              ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          InkWell(
+            onTap: _isComposing
+                ? () => widget.onSubmit(widget.controller.text)
+                : null,
+            borderRadius: BorderRadius.circular(50),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _isComposing
+                    ? AppColors.primary
+                    : AppColors.primary.withValues(alpha: 0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.arrow_upward_rounded,
+                color: _isComposing ? Colors.white : AppColors.primary,
+                size: 20,
+              ),
             ),
           ),
         ],
@@ -243,90 +425,94 @@ class _CommentsSheetState extends State<CommentsSheet> {
   }
 }
 
-// --- WIDGET ITEM KOMENTAR (Keep unchanged) ---
 class _CommentItem extends StatelessWidget {
   final Map<String, dynamic> data;
+  final VoidCallback onReply;
 
-  const _CommentItem({required this.data});
+  const _CommentItem({required this.data, required this.onReply});
 
   @override
   Widget build(BuildContext context) {
-    final profile = data['profile'] ?? {};
-    final fullName = profile['full_name'] as String?;
-    final nickname = profile['nickname'] as String?;
-    final name = fullName ?? nickname ?? "Unknown";
-    final avatarUrl = profile['avatar_url'] as String?;
+    final name = data['user_name'] ?? "Unknown";
+    final avatarUrl = data['user_avatar'];
+    final content = data['content'] ?? "";
+    final createdAt =
+        DateTime.tryParse(data['created_at'] ?? "")?.toLocal() ??
+        DateTime.now();
+    final isReply = data['parent_id'] != null;
+    final isPending = data['is_pending'] == true;
 
-    final createdAt = DateTime.parse(data['created_at']).toLocal();
-    final timeString = timeago.format(createdAt, locale: 'en_short');
-
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        CircleAvatar(
-          radius: 18,
-          backgroundColor: Colors.grey[200],
-          backgroundImage: (avatarUrl != null) ? NetworkImage(avatarUrl) : null,
-          child: (avatarUrl == null)
-              ? Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : "?",
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textMain,
-                    fontWeight: FontWeight.bold,
-                  ),
-                )
-              : null,
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+    return Opacity(
+      opacity: isPending ? 0.6 : 1.0,
+      child: Padding(
+        padding: EdgeInsets.only(left: isReply ? 40.0 : 0.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CircleAvatar(
+              radius: isReply ? 14 : 18,
+              backgroundColor: Colors.grey[200],
+              backgroundImage: (avatarUrl != null)
+                  ? NetworkImage(avatarUrl)
+                  : null,
+              child: (avatarUrl == null)
+                  ? Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : "?",
+                      style: TextStyle(
+                        fontSize: isReply ? 10 : 12,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black54,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                      color: AppColors.textMain,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13,
+                          color: AppColors.textMain,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        isPending
+                            ? "Sending..."
+                            : timeago.format(createdAt, locale: 'en_short'),
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(height: 2),
                   Text(
-                    "•",
-                    style: TextStyle(color: Colors.grey[400], fontSize: 10),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    timeString,
+                    content,
                     style: TextStyle(
-                      color: Colors.grey[500],
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
+                      color: isPending ? Colors.grey : const Color(0xFF334155),
+                      fontSize: 14,
+                      height: 1.4,
                     ),
                   ),
+                  if (!isPending) ...[
+                    const SizedBox(height: 4),
+                    _ActionButton(label: "Reply", onTap: onReply),
+                  ],
                 ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                data['content'] ?? "",
-                style: const TextStyle(
-                  color: Color(0xFF334155),
-                  fontSize: 14,
-                  height: 1.4,
-                  fontWeight: FontWeight.w400,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [_ActionButton(label: "Reply", onTap: () {})],
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
