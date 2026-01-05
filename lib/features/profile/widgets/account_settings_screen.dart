@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:shimmer/shimmer.dart';
 import '../../../core/constant/app_colors.dart';
 
 class AccountSettingsScreen extends StatefulWidget {
@@ -11,33 +10,32 @@ class AccountSettingsScreen extends StatefulWidget {
 }
 
 class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
+  // --- CONTROLLERS ---
   late TextEditingController _nicknameController;
   late TextEditingController _emailController;
   late TextEditingController _ageController;
   late TextEditingController _locationController;
   late TextEditingController _institutionController;
 
+  // --- DROPDOWN STATE ---
   String? _selectedGender;
   String? _selectedOccupation;
 
   bool _isLoading = false;
   bool _isFetching = true;
+  final bool _isPro = true;
 
-  bool _isPro = false;
-  String _subscriptionStatus = "Regular";
-
-  String _fullName = "User";
+  // --- AVATAR STATE ---
   String? _avatarUrl;
 
-  final List<String> _genders = ['Male', 'Female', 'Prefer not to say'];
+  // --- DATA LISTS ---
+  final List<String> _genders = ['Male', 'Female'];
   final List<String> _occupations = [
     'Elementary Student',
     'Middle School Student',
     'High School Student',
     'College Student',
     'Employee',
-    'Educator',
-    'Freelancer',
     'Other',
   ];
 
@@ -63,6 +61,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     super.dispose();
   }
 
+  // --- 1. FETCH DATA ---
   Future<void> _getProfileData() async {
     try {
       final user = Supabase.instance.client.auth.currentUser;
@@ -70,75 +69,50 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
 
       _emailController.text = user.email ?? "";
 
-      final profileResponse = await Supabase.instance.client
+      // We use .maybeSingle() instead of .single() to prevent crashes if row is missing
+      final data = await Supabase.instance.client
           .from('profiles')
           .select()
           .eq('id', user.id)
           .maybeSingle();
 
-      final levelResponse = await Supabase.instance.client
-          .from('level')
-          .select('status')
-          .eq('id', user.id)
-          .maybeSingle();
-
       if (mounted) {
         setState(() {
-          if (profileResponse != null) {
-            _fullName = profileResponse['full_name'] ?? 'User';
+          if (data != null) {
+            _nicknameController.text = data['nickname'] ?? '';
+            _ageController.text = data['age']?.toString() ?? '';
+            _locationController.text = data['location'] ?? '';
+            _institutionController.text = data['institution_name'] ?? '';
+            _avatarUrl = data['avatar_url'];
 
-            _avatarUrl = profileResponse['avatar_url'];
-
-            if (_avatarUrl != null) {
-              _avatarUrl =
-                  "$_avatarUrl?t=${DateTime.now().millisecondsSinceEpoch}";
+            if (_genders.contains(data['gender'])) {
+              _selectedGender = data['gender'];
             }
-
-            _nicknameController.text = profileResponse['nickname'] ?? '';
-            _ageController.text = profileResponse['age']?.toString() ?? '';
-            _locationController.text = profileResponse['location'] ?? '';
-            _institutionController.text =
-                profileResponse['institution_name'] ?? '';
-
-            if (_genders.contains(profileResponse['gender'])) {
-              _selectedGender = profileResponse['gender'];
-            }
-            if (_occupations.contains(profileResponse['occupation'])) {
-              _selectedOccupation = profileResponse['occupation'];
+            if (_occupations.contains(data['occupation'])) {
+              _selectedOccupation = data['occupation'];
             }
           }
-
-          if (levelResponse != null) {
-            _subscriptionStatus = levelResponse['status'] ?? 'Regular';
-            _isPro = _subscriptionStatus.contains('Premium');
-          } else {
-            _isPro = false;
-            _subscriptionStatus = "Regular";
-          }
-
           _isFetching = false;
         });
       }
     } catch (e) {
-      debugPrint("Error fetching data: $e");
+      debugPrint("Error fetching profile: $e");
       if (mounted) setState(() => _isFetching = false);
-      _showSnackBar("Failed to fetch profile data.", isError: true);
     }
   }
 
+  // --- 2. UPDATE/UPSERT DATA (THE FIX) ---
   Future<void> _saveProfile() async {
-    if (_nicknameController.text.isEmpty) {
-      _showSnackBar("Nickname cannot be empty.", isError: true);
-      return;
-    }
-
     setState(() => _isLoading = true);
 
     try {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
+      // 1. Include the 'id' in the updates map
       final updates = {
+        'id':
+            user.id, // CRITICAL: Required for Upsert to know which row to touch
         'nickname': _nicknameController.text.trim(),
         'age': int.tryParse(_ageController.text.trim()),
         'gender': _selectedGender,
@@ -148,34 +122,43 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         'updated_at': DateTime.now().toIso8601String(),
       };
 
-      await Supabase.instance.client
+      debugPrint("Attempting to Upsert: $updates");
+
+      // 2. Use UPSERT instead of UPDATE
+      // This creates the row if it's missing, or updates it if it exists.
+      final response = await Supabase.instance.client
           .from('profiles')
-          .update(updates)
-          .eq('id', user.id);
+          .upsert(updates)
+          .select(); // .select() ensures we get a response back to verify success
+
+      debugPrint("Upsert Success: $response");
 
       if (mounted) {
-        _showSnackBar("Profile updated successfully!", isError: false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text("Profile updated successfully!"),
+            backgroundColor: AppColors.success,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
         Navigator.pop(context);
       }
     } catch (e) {
-      debugPrint("Update Error: $e");
-      _showSnackBar("Failed to update profile: $e", isError: true);
+      debugPrint("Upsert Error: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error updating profile: $e"),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
-  }
-
-  void _showSnackBar(String message, {bool isError = true}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: isError ? AppColors.error : AppColors.success,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        margin: const EdgeInsets.all(16),
-      ),
-    );
   }
 
   @override
@@ -205,12 +188,16 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
             ),
           ),
         ),
-        bottomNavigationBar: _isFetching ? null : _buildBottomBar(),
+        bottomNavigationBar: _buildBottomBar(),
         body: _isFetching
-            ? _buildSkeletonLoading()
+            ? const Center(
+                child: CircularProgressIndicator(color: AppColors.primary),
+              )
             : SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 10,
+                ),
                 physics: const BouncingScrollPhysics(),
                 child: Column(
                   children: [
@@ -244,12 +231,11 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                             isReadOnly: true,
                           ),
                           const SizedBox(height: 20),
-
                           Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Expanded(
-                                flex: 4,
+                                flex: 3,
                                 child: _BuildTextField(
                                   label: "Age",
                                   controller: _ageController,
@@ -257,9 +243,9 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                                   keyboardType: TextInputType.number,
                                 ),
                               ),
-                              const SizedBox(width: 10),
+                              const SizedBox(width: 16),
                               Expanded(
-                                flex: 6,
+                                flex: 4,
                                 child: _BuildDropdown(
                                   label: "Gender",
                                   value: _selectedGender,
@@ -271,7 +257,6 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
                               ),
                             ],
                           ),
-
                           const SizedBox(height: 20),
                           _BuildTextField(
                             label: "Location",
@@ -304,111 +289,14 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     );
   }
 
-  Widget _buildSkeletonLoading() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-      physics: const NeverScrollableScrollPhysics(),
-      child: Shimmer.fromColors(
-        baseColor: Colors.grey.shade300,
-        highlightColor: Colors.grey.shade100,
-        child: Column(
-          children: [
-            const CircleAvatar(radius: 50, backgroundColor: Colors.white),
-            const SizedBox(height: 16),
-            Container(
-              height: 24,
-              width: 150,
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(8)),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              height: 14,
-              width: 200,
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(8)),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              height: 24,
-              width: 100,
-              decoration: BoxDecoration(
-                  color: Colors.white, borderRadius: BorderRadius.circular(20)),
-            ),
-            const SizedBox(height: 30),
-
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: Colors.white),
-              ),
-              child: Column(
-                children: [
-                  _buildSkeletonField(),
-                  const SizedBox(height: 20),
-                  _buildSkeletonField(),
-                  const SizedBox(height: 20),
-                  Row(
-                    children: [
-                      Expanded(flex: 4, child: _buildSkeletonField()),
-                      const SizedBox(width: 10),
-                      Expanded(flex: 6, child: _buildSkeletonField()),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  _buildSkeletonField(),
-                  const SizedBox(height: 20),
-                  _buildSkeletonField(),
-                  const SizedBox(height: 20),
-                  _buildSkeletonField(),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSkeletonField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          height: 14,
-          width: 80,
-          margin: const EdgeInsets.only(bottom: 8),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(4),
-          ),
-        ),
-        Container(
-          height: 52,
-          width: double.infinity,
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildProfileHeader() {
-    String displayHeader = _fullName;
-    if (displayHeader.isEmpty) displayHeader = "User";
-
     ImageProvider imageProvider;
-
     if (_avatarUrl != null && _avatarUrl!.isNotEmpty) {
       imageProvider = NetworkImage(_avatarUrl!);
     } else {
-      final avatarUrl =
-          'https://ui-avatars.com/api/?name=${Uri.encodeComponent(displayHeader)}&background=random&size=200&bold=true';
-      imageProvider = NetworkImage(avatarUrl);
+      imageProvider = const NetworkImage(
+        'https://ui-avatars.com/api/?name=User&background=random',
+      );
     }
 
     return Column(
@@ -431,32 +319,16 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               child: CircleAvatar(
                 radius: 50,
                 backgroundColor: const Color(0xFFF1F5F9),
-                key: ValueKey(_avatarUrl ?? displayHeader),
                 backgroundImage: imageProvider,
-              ),
-            ),
-            InkWell(
-              onTap: () {
-                _showSnackBar(
-                    "Please change photo from the main Profile menu.",
-                    isError: false);
-              },
-              child: Container(
-                padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 2),
-                ),
-                child: const Icon(Icons.camera_alt_rounded,
-                    color: Colors.white, size: 16),
               ),
             ),
           ],
         ),
         const SizedBox(height: 16),
         Text(
-          displayHeader,
+          _nicknameController.text.isEmpty
+              ? "New User"
+              : _nicknameController.text,
           style: const TextStyle(
             fontSize: 22,
             fontWeight: FontWeight.w800,
@@ -495,7 +367,7 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
               ),
               const SizedBox(width: 6),
               Text(
-                _isPro ? "Pro Active ($_subscriptionStatus)" : "Free Plan",
+                _isPro ? "Pro Active" : "Free Plan",
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
@@ -560,6 +432,8 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
   }
 }
 
+// --- HELPER WIDGETS ---
+
 class _BuildTextField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -608,9 +482,8 @@ class _BuildTextField extends StatelessWidget {
             ),
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
-              horizontal: 12,
+              horizontal: 20,
             ),
-            isDense: true,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1),
@@ -621,6 +494,10 @@ class _BuildTextField extends StatelessWidget {
                 color: AppColors.primary,
                 width: 1.5,
               ),
+            ),
+            disabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(16),
+              borderSide: BorderSide.none,
             ),
           ),
         ),
@@ -660,7 +537,6 @@ class _BuildDropdown extends StatelessWidget {
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
           initialValue: value,
-          isExpanded: true,
           icon: const Icon(
             Icons.keyboard_arrow_down_rounded,
             color: Color(0xFF94A3B8),
@@ -676,9 +552,8 @@ class _BuildDropdown extends StatelessWidget {
             prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 22),
             contentPadding: const EdgeInsets.symmetric(
               vertical: 16,
-              horizontal: 12,
+              horizontal: 20,
             ),
-            isDense: true,
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(16),
               borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
@@ -692,13 +567,7 @@ class _BuildDropdown extends StatelessWidget {
             ),
           ),
           items: items.map((String item) {
-            return DropdownMenuItem<String>(
-                value: item,
-                child: Text(
-                  item,
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ));
+            return DropdownMenuItem<String>(value: item, child: Text(item));
           }).toList(),
           onChanged: onChanged,
           dropdownColor: Colors.white,
