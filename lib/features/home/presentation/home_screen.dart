@@ -4,10 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 
+// --- IMPORTS FOR SERVICES ---
+import '../../../core/services/analytics_service.dart';
+
 // --- IMPORTS FOR WIDGETS ---
 import '../../dashboard/widgets/dashboard_header.dart';
 import '../widgets/focus_card.dart';
-import '../widgets/tools_grid.dart';
+// Note: We removed ToolsGrid import because we are building a custom limited grid here
 
 // --- IMPORT PREMIUM HELPER ---
 import '../../../core/utils/premium_helper.dart';
@@ -42,19 +45,16 @@ class _HomeScreenState extends State<HomeScreen>
   late AnimationController _bgController;
   late Animation<double> _bgAnimation;
 
-  // --- STATE DATA (Dynamic) ---
+  // --- STATE DATA ---
   String _userName = "User";
   String? _avatarUrl;
   String _levelStatus = "Reguler";
   bool _isPro = false;
 
   // --- PREMIUM LOGIC ---
-  // Define which features require a premium subscription
   final List<String> _lockedFeatures = ["Blurting Method", "Flashcards"];
 
-  // --- MASTER DATA ---
-  // Note: 'screen' is used as a fallback.
-  // We override navigation logic for Second Brain and Locked items in onTap.
+  // --- MASTER DATA (For Search) ---
   final List<Map<String, dynamic>> _masterSearchData = [
     {
       "title": "Pomodoro Timer",
@@ -94,8 +94,7 @@ class _HomeScreenState extends State<HomeScreen>
       "icon": Icons.psychology_rounded,
       "color": const Color(0xFF1E293B),
       "category": "Knowledge",
-      // We will override this in onTap to pass 'isPro'
-      "screen": const SizedBox(),
+      "screen": const SizedBox(), // Override in navigation
     },
     {
       "title": "Eisenhower Matrix",
@@ -174,7 +173,7 @@ class _HomeScreenState extends State<HomeScreen>
           setState(() {
             if (profileData != null) {
               String fullName = profileData['nickname'] ?? "User";
-              _userName = fullName.split(' ')[0]; // Take first name
+              _userName = fullName.split(' ')[0];
               _avatarUrl = profileData['avatar_url'];
 
               if (_avatarUrl != null) {
@@ -210,19 +209,8 @@ class _HomeScreenState extends State<HomeScreen>
         _searchResults = _masterSearchData.where((item) {
           final title = item['title'].toString().toLowerCase();
           final desc = item['desc'].toString().toLowerCase();
-          final category = item['category'].toString().toLowerCase();
-          return title.contains(query) ||
-              desc.contains(query) ||
-              category.contains(query);
+          return title.contains(query) || desc.contains(query);
         }).toList();
-
-        _searchResults.sort((a, b) {
-          bool aMatch = a['title'].toString().toLowerCase().startsWith(query);
-          bool bMatch = b['title'].toString().toLowerCase().startsWith(query);
-          if (aMatch && !bMatch) return -1;
-          if (!aMatch && bMatch) return 1;
-          return 0;
-        });
       }
     });
   }
@@ -247,7 +235,6 @@ class _HomeScreenState extends State<HomeScreen>
       child: Stack(
         children: [
           RepaintBoundary(child: _buildBackgroundDecoration()),
-
           SafeArea(
             bottom: false,
             child: RefreshIndicator(
@@ -276,12 +263,10 @@ class _HomeScreenState extends State<HomeScreen>
                               ],
                             ),
                     ),
-
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: _buildFunctionalSearchBar(),
                     ),
-
                     const SizedBox(height: 24),
                     _isSearching
                         ? _buildSearchResults()
@@ -322,13 +307,171 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
           const SizedBox(height: 16),
-          // IMPORTANT: You should pass _isPro to ToolsGrid too if you want locks there!
-          const ToolsGrid(),
+
+          // --- FIXED: DISPLAY ONLY 4 TOOLS GRID HERE ---
+          // This satisfies your FE friend (UI) and you (Analytics)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _buildFeaturedToolsGrid(),
+          ),
         ],
       ),
     );
   }
 
+  // --- CUSTOM GRID: Top 4 Tools (Pomodoro, Feynman, Mind Map, Notes) ---
+  Widget _buildFeaturedToolsGrid() {
+    final List<Map<String, dynamic>> featuredTools = [
+      {
+        "title": "Pomodoro",
+        "desc": "Focus timer",
+        "icon": Icons.timer_outlined,
+        "color": const Color(0xFFF43F5E),
+        "screen": const PomodoroScreen(),
+      },
+      {
+        "title": "Feynman",
+        "desc": "Explain ideas",
+        "icon": Icons.graphic_eq, // Or Icons.record_voice_over_outlined
+        "color": const Color(0xFF3B82F6),
+        "screen": const FeynmanScreen(),
+      },
+      {
+        "title": "Mind Map",
+        "desc": "Visualize logic",
+        "icon": Icons.hub_outlined,
+        "color": const Color(0xFF10B981),
+        "screen": const MindMapScreen(),
+      },
+      {
+        "title": "Notes",
+        "desc": "Quick thoughts",
+        "icon": Icons.edit_note_rounded,
+        "color": const Color(0xFF8B5CF6),
+        "screen": const NotesScreen(),
+      },
+    ];
+
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.0, // Square aspect ratio fits icon + text well
+      ),
+      itemCount: featuredTools.length,
+      itemBuilder: (context, index) {
+        final tool = featuredTools[index];
+        // None of these 4 are locked, but we keep the logic just in case
+        final bool isLocked = tool['isLocked'] ?? false;
+
+        return GestureDetector(
+          onTap: () {
+            // 1. ANALYTICS
+            final featureKey = tool['title']
+                .toString()
+                .toLowerCase()
+                .replaceAll(' ', '_');
+            AnalyticsService().logFeature(featureKey);
+
+            // 2. LOCK CHECK
+            if (isLocked) {
+              showPremiumDialog(context, featureName: tool['title']);
+              return;
+            }
+
+            // 3. NAVIGATION
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => tool['screen']),
+            );
+          },
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppColors.freeBorder),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.shadow.withValues(alpha: 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // ICON BOX
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: (tool['color'] as Color).withValues(
+                            alpha: 0.1,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(
+                          tool['icon'],
+                          color: tool['color'],
+                          size: 24,
+                        ),
+                      ),
+
+                      const Spacer(),
+
+                      // TITLE
+                      Text(
+                        tool['title'],
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 15,
+                          color: AppColors.textMain,
+                        ),
+                      ),
+
+                      // DESCRIPTION
+                      const SizedBox(height: 4),
+                      Text(
+                        tool['desc'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textMuted.withValues(alpha: 0.8),
+                          fontWeight: FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // LOCK ICON (Optional)
+                if (isLocked)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: Icon(
+                      Icons.lock_rounded,
+                      size: 18,
+                      color: Colors.amber[700],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // --- Search Results Logic (Preserved) ---
   Widget _buildSearchResults() {
     if (_searchResults.isEmpty) {
       return SizedBox(
@@ -366,8 +509,6 @@ class _HomeScreenState extends State<HomeScreen>
       itemBuilder: (context, index) {
         final item = _searchResults[index];
         final title = item['title'];
-
-        // 1. Check if the feature is locked
         final bool isLocked = _lockedFeatures.contains(title) && !_isPro;
 
         return Container(
@@ -404,7 +545,6 @@ class _HomeScreenState extends State<HomeScreen>
               item['desc'],
               style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
             ),
-            // 2. Show Lock icon if locked
             trailing: isLocked
                 ? Icon(Icons.lock_rounded, size: 20, color: Colors.amber[700])
                 : const Icon(
@@ -413,23 +553,26 @@ class _HomeScreenState extends State<HomeScreen>
                     color: AppColors.textMuted,
                   ),
             onTap: () {
-              // 3. Intercept Navigation
+              // --- ANALYTICS LOGGING ---
+              final featureKey = title.toString().toLowerCase().replaceAll(
+                ' ',
+                '_',
+              );
+              AnalyticsService().logFeature(featureKey);
+
               if (isLocked) {
                 showPremiumDialog(context, featureName: title);
                 return;
               }
 
-              // 4. Special navigation for Second Brain (Pass isPro)
               if (title == "Second Brain") {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    // Ensure SecondBrainScreen accepts this parameter
                     builder: (context) => SecondBrainScreen(isPro: _isPro),
                   ),
                 );
               } else {
-                // Normal navigation
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (context) => item['screen']),
@@ -442,6 +585,7 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // --- Widgets for UI Components ---
   Widget _buildFunctionalSearchBar() {
     return Container(
       height: 54,

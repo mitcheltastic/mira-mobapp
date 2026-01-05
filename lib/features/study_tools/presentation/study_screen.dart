@@ -4,6 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
 import '../../../core/utils/premium_helper.dart';
 
+// --- IMPORT ANALYTICS SERVICE ---
+import '../../../core/services/analytics_service.dart';
+
 // Feature Imports
 import 'pomodoro_screen.dart';
 import 'feynman_screen.dart';
@@ -28,10 +31,12 @@ class _StudyScreenState extends State<StudyScreen> {
   // --- STATE ---
   String _searchQuery = "";
   String _selectedCategory = "All";
-  bool _isPro = false;
-  bool _isLoading = true; // Now actively used
+  bool _isPro = false; // Strictly Premium
+  bool _isPlus = false; // Plus Tier
+  bool _isLoading = true;
 
   // --- LOCKED FEATURES ---
+  // These features are locked for Regular users, but unlocked for Plus & Premium
   final List<String> _lockedFeatures = ["Blurting Method", "Flashcards"];
 
   // --- MASTER DATA ---
@@ -123,8 +128,11 @@ class _StudyScreenState extends State<StudyScreen> {
           setState(() {
             if (levelData != null && levelData['status'] != null) {
               final status = levelData['status'];
+              // Premium Tiers
               _isPro =
                   status == 'Monthly Premium' || status == 'Yearly Premium';
+              // Plus Tier
+              _isPlus = status == 'Monthly Plus';
             }
             _isLoading = false;
           });
@@ -168,6 +176,9 @@ class _StudyScreenState extends State<StudyScreen> {
         padding: const EdgeInsets.only(bottom: 90.0),
         child: FloatingActionButton.extended(
           onPressed: () {
+            // Log AI Chat Usage
+            AnalyticsService().logFeature('ai_chat');
+
             Navigator.push(
               context,
               MaterialPageRoute(builder: (context) => const AIChatScreen()),
@@ -279,7 +290,11 @@ class _StudyScreenState extends State<StudyScreen> {
       itemBuilder: (context, index) {
         final tool = _filteredTools[index];
         final title = tool['title'];
-        final isLocked = _lockedFeatures.contains(title) && !_isPro;
+
+        // --- LOCK LOGIC UPDATED ---
+        // Feature is unlocked if user is Pro OR Plus
+        final bool isUnlocked = _isPro || _isPlus;
+        final bool isLocked = _lockedFeatures.contains(title) && !isUnlocked;
 
         return _buildToolCard(tool, isLocked);
       },
@@ -289,21 +304,33 @@ class _StudyScreenState extends State<StudyScreen> {
   Widget _buildToolCard(Map<String, dynamic> tool, bool isLocked) {
     return GestureDetector(
       onTap: () {
+        // --- 1. TRACK ANALYTICS ---
+        final featureKey = tool['title'].toString().toLowerCase().replaceAll(
+          ' ',
+          '_',
+        );
+        AnalyticsService().logFeature(featureKey);
+
+        // --- 2. Check Lock ---
         if (isLocked) {
           showPremiumDialog(context, featureName: tool['title']);
           return;
         }
 
+        // --- 3. Check Second Brain ---
         if (tool['title'] == "Second Brain") {
           Navigator.push(
             context,
             MaterialPageRoute(
+              // Passing _isPro ensures only Premium users get the visual "Unlimited" cues in SecondBrain,
+              // but Plus users can still access it (logic handled by SubscriptionService).
               builder: (context) => SecondBrainScreen(isPro: _isPro),
             ),
           );
           return;
         }
 
+        // --- 4. Normal Navigation ---
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => tool['screen']),
