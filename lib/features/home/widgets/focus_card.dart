@@ -7,6 +7,9 @@ import 'package:intl/intl.dart';
 import '../../../core/constant/app_colors.dart';
 import '../../study_tools/presentation/pomodoro_screen.dart';
 
+// --- IMPORT ANALYTICS SERVICE ---
+import '../../../core/services/analytics_service.dart';
+
 class FocusSection extends StatefulWidget {
   const FocusSection({super.key});
 
@@ -105,6 +108,7 @@ class _FocusSectionState extends State<FocusSection> {
                     alignment: Alignment.center,
                     transform: Matrix4.identity()
                       ..setEntry(3, 2, 0.001)
+                      // ignore: deprecated_member_use
                       ..scale(scale),
                     child: Opacity(
                       opacity: opacity,
@@ -201,6 +205,9 @@ class _FocusSectionState extends State<FocusSection> {
               child: InkWell(
                 onTap: () {
                   if (index == 1) {
+                    // --- TRACK ANALYTICS ---
+                    AnalyticsService().logFeature('pomodoro_timer');
+
                     Navigator.push(
                       context,
                       MaterialPageRoute(builder: (_) => const PomodoroScreen()),

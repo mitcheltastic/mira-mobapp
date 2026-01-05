@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:timeago/timeago.dart' as timeago; // 1. Add this import
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/constant/app_colors.dart';
 
 class NoteCard extends StatelessWidget {
@@ -22,10 +22,14 @@ class NoteCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 2. Parse the date string to a readable "Time Ago" format
+    // Parse Supabase ISO string
     final DateTime parsedDate =
         DateTime.tryParse(date)?.toLocal() ?? DateTime.now();
-    final String displayDate = timeago.format(parsedDate, locale: 'en_short');
+
+    // Format date (e.g., "5 minutes ago")
+    // Note: If you want short format like "5m", use locale: 'en_short'
+    // but ensure you load the locale messages in main.dart first.
+    final String displayDate = timeago.format(parsedDate);
 
     return GestureDetector(
       onTap: onTap,
@@ -34,7 +38,6 @@ class NoteCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          // Border halus dengan warna kategori
           border: Border.all(color: accentColor.withValues(alpha: 0.2)),
           boxShadow: [
             BoxShadow(
@@ -47,7 +50,7 @@ class NoteCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Header: Kategori & Tanggal ---
+            // --- Header: Category & Date ---
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
@@ -59,6 +62,7 @@ class NoteCard extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
+                  // Category Badge
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -84,6 +88,8 @@ class NoteCard extends StatelessWidget {
                       ],
                     ),
                   ),
+
+                  // Date
                   Row(
                     children: [
                       Icon(
@@ -93,7 +99,7 @@ class NoteCard extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        displayDate, // 3. Use the formatted date here
+                        displayDate,
                         style: const TextStyle(
                           fontSize: 11,
                           color: AppColors.textMuted,
@@ -105,7 +111,7 @@ class NoteCard extends StatelessWidget {
               ),
             ),
 
-            // --- Body: Judul & Konten ---
+            // --- Body: Title & Content ---
             Padding(
               padding: const EdgeInsets.all(16),
               child: Column(

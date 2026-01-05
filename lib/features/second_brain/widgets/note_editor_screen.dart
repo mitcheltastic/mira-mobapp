@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constant/app_colors.dart';
+import '../../profile/widgets/subscription_screen.dart';
+
+// --- IMPORT SERVICE ---
+import '../../../core/services/subscription_service.dart';
 
 class NoteEditorScreen extends StatefulWidget {
   final Map<String, dynamic>? existingNote;
@@ -63,6 +67,21 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
 
     setState(() => _isSaving = true);
 
+    // --- 1. CHECK SUBSCRIPTION LIMITS (Only for NEW notes) ---
+    if (widget.existingNote == null) {
+      final tier = await SubscriptionService().getUserTier();
+      final canCreate = await SubscriptionService().canCreateNote(tier);
+
+      if (!canCreate) {
+        if (mounted) {
+          setState(() => _isSaving = false);
+          _showUpgradeDialog(tier);
+        }
+        return;
+      }
+    }
+    // --- END LIMIT CHECK ---
+
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
@@ -113,6 +132,47 @@ class _NoteEditorScreenState extends State<NoteEditorScreen> {
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  void _showUpgradeDialog(UserTier currentTier) {
+    String message = SubscriptionService().getLimitMessage(
+      currentTier,
+      'notes',
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Storage Full"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (c) => const SubscriptionScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              "Upgrade Now",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // 1. Import Supabase
 
 // Import sesuai path project Anda
 import '../../../core/constant/app_colors.dart';
@@ -10,7 +11,7 @@ enum Quadrant {
   doFirst, // Q1: Urgent & Important
   schedule, // Q2: Not Urgent & Important
   delegate, // Q3: Urgent & Not Important
-  delete // Q4: Not Urgent & Not Important
+  delete, // Q4: Not Urgent & Not Important
 }
 
 class EisenhowerTask {
@@ -27,6 +28,32 @@ class EisenhowerTask {
     required this.quadrant,
     this.isCompleted = false,
   });
+
+  // 2. Convert from Supabase (JSON) to Object
+  factory EisenhowerTask.fromMap(Map<String, dynamic> map) {
+    return EisenhowerTask(
+      id: map['id'],
+      title: map['title'] ?? '',
+      description: map['description'] ?? '',
+      // Convert String 'doFirst' back to Enum
+      quadrant: Quadrant.values.firstWhere(
+        (e) => e.name == map['quadrant'],
+        orElse: () => Quadrant.doFirst,
+      ),
+      isCompleted: map['is_completed'] ?? false,
+    );
+  }
+
+  // 3. Convert Object to Supabase (JSON)
+  Map<String, dynamic> toMap(String userId) {
+    return {
+      'user_id': userId,
+      'title': title,
+      'description': description,
+      'quadrant': quadrant.name, // Save Enum as String
+      'is_completed': isCompleted,
+    };
+  }
 }
 
 class EisenhowerScreen extends StatefulWidget {
@@ -38,43 +65,166 @@ class EisenhowerScreen extends StatefulWidget {
 
 class _EisenhowerScreenState extends State<EisenhowerScreen>
     with TickerProviderStateMixin {
+  final _supabase = Supabase.instance.client; // Supabase Client
   late TabController _tabController;
   late AnimationController _entryAnimController;
 
-  // --- STATE DATA (RAM Only) ---
-  List<EisenhowerTask> tasks = [
-    EisenhowerTask(
-        id: '1',
-        title: 'Urgent Bug Fix',
-        description: 'Critical production issue',
-        quadrant: Quadrant.doFirst),
-    EisenhowerTask(
-        id: '2',
-        title: 'Learn State Management',
-        description: 'For better architecture',
-        quadrant: Quadrant.schedule),
-  ];
+  List<EisenhowerTask> tasks = []; // Real Data
+  bool _isLoading = true; // Loading State
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 4, vsync: this);
 
-    // Animasi Masuk
     _entryAnimController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 800),
     )..forward();
 
-    // Listener Tab
     _tabController.addListener(() {
       if (!_tabController.indexIsChanging) {
         setState(() {});
       }
     });
 
-    // Intro guide muncul saat awal buka
-    WidgetsBinding.instance.addPostFrameCallback((_) => _showIntroGuide());
+    _fetchTasks(); // Fetch data on startup
+
+    // Intro guide
+    // WidgetsBinding.instance.addPostFrameCallback((_) => _showIntroGuide());
+  }
+
+  // --- DATABASE LOGIC ---
+
+  Future<void> _fetchTasks() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final response = await _supabase
+          .from('eisenhower_tasks')
+          .select()
+          .order('created_at', ascending: false);
+
+      if (mounted) {
+        setState(() {
+          tasks = (response as List)
+              .map((e) => EisenhowerTask.fromMap(e))
+              .toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching tasks: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _addTask(String title, String desc, Quadrant q) async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    // Optimistic UI Update (Add locally first for speed)
+    final tempId = DateTime.now().millisecondsSinceEpoch.toString();
+    final newTask = EisenhowerTask(
+      id: tempId,
+      title: title,
+      description: desc,
+      quadrant: q,
+    );
+
+    setState(() => tasks.add(newTask));
+    HapticFeedback.mediumImpact();
+
+    try {
+      await _supabase.from('eisenhower_tasks').insert(newTask.toMap(userId));
+      _fetchTasks(); // Refresh to get the real ID from DB
+    } catch (e) {
+      // Revert if error
+      setState(() => tasks.removeWhere((t) => t.id == tempId));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text("Failed to add task: $e")));
+      }
+    }
+  }
+
+  Future<void> _editTask(
+    String id,
+    String newTitle,
+    String newDesc,
+    Quadrant newQ,
+  ) async {
+    // Optimistic Update
+    final index = tasks.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+
+    final oldTask = tasks[index]; // Keep backup
+
+    setState(() {
+      tasks[index].title = newTitle;
+      tasks[index].description = newDesc;
+      tasks[index].quadrant = newQ;
+    });
+    HapticFeedback.lightImpact();
+
+    try {
+      await _supabase
+          .from('eisenhower_tasks')
+          .update({
+            'title': newTitle,
+            'description': newDesc,
+            'quadrant': newQ.name,
+          })
+          .eq('id', id);
+    } catch (e) {
+      // Revert
+      setState(() {
+        tasks[index].title = oldTask.title;
+        tasks[index].description = oldTask.description;
+        tasks[index].quadrant = oldTask.quadrant;
+      });
+    }
+  }
+
+  Future<void> _deleteTask(String id) async {
+    final index = tasks.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+
+    final removedTask = tasks[index];
+
+    setState(() => tasks.removeAt(index));
+    HapticFeedback.mediumImpact();
+
+    try {
+      await _supabase.from('eisenhower_tasks').delete().eq('id', id);
+    } catch (e) {
+      // Revert
+      setState(() => tasks.insert(index, removedTask));
+    }
+  }
+
+  Future<void> _toggleTask(String id) async {
+    final index = tasks.indexWhere((t) => t.id == id);
+    if (index == -1) return;
+
+    setState(() {
+      tasks[index].isCompleted = !tasks[index].isCompleted;
+    });
+    HapticFeedback.selectionClick();
+
+    try {
+      await _supabase
+          .from('eisenhower_tasks')
+          .update({'is_completed': tasks[index].isCompleted})
+          .eq('id', id);
+    } catch (e) {
+      // Revert
+      setState(() {
+        tasks[index].isCompleted = !tasks[index].isCompleted;
+      });
+    }
   }
 
   @override
@@ -84,50 +234,7 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
     super.dispose();
   }
 
-  // --- LOGIC CRUD ---
-
-  void _addTask(String title, String desc, Quadrant q) {
-    setState(() {
-      tasks.add(EisenhowerTask(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: title,
-        description: desc,
-        quadrant: q,
-      ));
-    });
-    HapticFeedback.mediumImpact();
-  }
-
-  void _editTask(String id, String newTitle, String newDesc, Quadrant newQ) {
-    setState(() {
-      final index = tasks.indexWhere((t) => t.id == id);
-      if (index != -1) {
-        tasks[index].title = newTitle;
-        tasks[index].description = newDesc;
-        tasks[index].quadrant = newQ;
-      }
-    });
-    HapticFeedback.lightImpact();
-  }
-
-  void _deleteTask(String id) {
-    setState(() {
-      tasks.removeWhere((t) => t.id == id);
-    });
-    HapticFeedback.mediumImpact();
-  }
-
-  void _toggleTask(String id) {
-    setState(() {
-      final index = tasks.indexWhere((t) => t.id == id);
-      if (index != -1) {
-        tasks[index].isCompleted = !tasks[index].isCompleted;
-      }
-    });
-    HapticFeedback.selectionClick();
-  }
-
-  // --- HELPERS WARNA (MENGGUNAKAN APPCOLORS) ---
+  // --- HELPERS WARNA ---
 
   Color _getQuadrantColor(Quadrant q) {
     switch (q) {
@@ -155,8 +262,201 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
     }
   }
 
-  // --- INTRO GUIDE (Konsisten) ---
+  // --- UI FORMS ---
 
+  void _showTaskSheet({EisenhowerTask? task}) {
+    final titleController = TextEditingController(text: task?.title ?? "");
+    final descController = TextEditingController(text: task?.description ?? "");
+    Quadrant selectedQuadrant =
+        task?.quadrant ?? Quadrant.values[_tabController.index];
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) {
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: Container(
+              padding: const EdgeInsets.all(24),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    task == null ? "New Task" : "Edit Task",
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textMain,
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Title
+                  TextField(
+                    controller: titleController,
+                    autofocus: true,
+                    textCapitalization: TextCapitalization.sentences,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textMain,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: "Title",
+                      hintText: "What needs to be done?",
+                      filled: true,
+                      fillColor: AppColors.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Desc
+                  TextField(
+                    controller: descController,
+                    textCapitalization: TextCapitalization.sentences,
+                    style: const TextStyle(color: AppColors.textMain),
+                    decoration: InputDecoration(
+                      labelText: "Description (Optional)",
+                      filled: true,
+                      fillColor: AppColors.background,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(16),
+                        borderSide: BorderSide.none,
+                      ),
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+
+                  // Category Selector
+                  const Text(
+                    "Category",
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textMuted,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: Quadrant.values.map((q) {
+                      final isSelected = selectedQuadrant == q;
+                      final color = _getQuadrantColor(q);
+                      return GestureDetector(
+                        onTap: () => setSheetState(() => selectedQuadrant = q),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 200),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          decoration: BoxDecoration(
+                            color: isSelected ? color : Colors.transparent,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: isSelected
+                                  ? color
+                                  : Colors.grey.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            _getQuadrantLabel(q),
+                            style: TextStyle(
+                              color: isSelected
+                                  ? Colors.white
+                                  : AppColors.textMuted,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.textMain,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        elevation: 0,
+                      ),
+                      onPressed: () {
+                        if (titleController.text.trim().isNotEmpty) {
+                          if (task == null) {
+                            _addTask(
+                              titleController.text,
+                              descController.text,
+                              selectedQuadrant,
+                            );
+                          } else {
+                            _editTask(
+                              task.id,
+                              titleController.text,
+                              descController.text,
+                              selectedQuadrant,
+                            );
+                          }
+                          Navigator.pop(context);
+                        }
+                      },
+                      child: const Text(
+                        "Save Task",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // --- INTRO GUIDE ---
   void _showIntroGuide() {
     showModalBottomSheet(
       context: context,
@@ -174,53 +474,63 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
           child: Column(
             children: [
               Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(10))),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
               const SizedBox(height: 24),
               Expanded(
                 child: SingleChildScrollView(
                   physics: const BouncingScrollPhysics(),
                   child: Column(
                     children: [
-                      const Text("Eisenhower Matrix",
-                          style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                              color: AppColors.textMain,
-                              letterSpacing: -0.5)),
+                      const Text(
+                        "Eisenhower Matrix",
+                        style: TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textMain,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
                       const SizedBox(height: 8),
                       const Text(
                         "Prioritize tasks by urgency and importance to boost productivity.",
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                            color: AppColors.textMuted,
-                            fontSize: 15,
-                            height: 1.4),
+                          color: AppColors.textMuted,
+                          fontSize: 15,
+                          height: 1.4,
+                        ),
                       ),
                       const SizedBox(height: 30),
                       _buildGuideItem(
-                          Icons.flash_on_rounded,
-                          AppColors.eisenhowerDo,
-                          "Do First",
-                          "Urgent & Important. Do it now."),
+                        Icons.flash_on_rounded,
+                        AppColors.eisenhowerDo,
+                        "Do First",
+                        "Urgent & Important. Do it now.",
+                      ),
                       _buildGuideItem(
-                          Icons.calendar_month_rounded,
-                          AppColors.eisenhowerPlan,
-                          "Schedule",
-                          "Not Urgent but Important. Plan a time."),
+                        Icons.calendar_month_rounded,
+                        AppColors.eisenhowerPlan,
+                        "Schedule",
+                        "Not Urgent but Important. Plan a time.",
+                      ),
                       _buildGuideItem(
-                          Icons.people_alt_rounded,
-                          AppColors.eisenhowerDelegate,
-                          "Delegate",
-                          "Urgent but Not Important. Can someone else do it?"),
+                        Icons.people_alt_rounded,
+                        AppColors.eisenhowerDelegate,
+                        "Delegate",
+                        "Urgent but Not Important. Can someone else do it?",
+                      ),
                       _buildGuideItem(
-                          Icons.delete_outline_rounded,
-                          AppColors.eisenhowerDrop,
-                          "Drop",
-                          "Neither Urgent nor Important. Eliminate it."),
+                        Icons.delete_outline_rounded,
+                        AppColors.eisenhowerDrop,
+                        "Drop",
+                        "Neither Urgent nor Important. Eliminate it.",
+                      ),
                     ],
                   ),
                 ),
@@ -234,15 +544,19 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                       backgroundColor: AppColors.eisenhowerPlan,
                       padding: const EdgeInsets.symmetric(vertical: 18),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
+                        borderRadius: BorderRadius.circular(16),
+                      ),
                       elevation: 0,
                     ),
                     onPressed: () => Navigator.pop(context),
-                    child: const Text("Start Prioritizing",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
+                    child: const Text(
+                      "Start Prioritizing",
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -254,7 +568,11 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
   }
 
   Widget _buildGuideItem(
-      IconData icon, Color color, String title, String desc) {
+    IconData icon,
+    Color color,
+    String title,
+    String desc,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 25),
       child: Row(
@@ -263,8 +581,9 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16)),
+              color: color.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(16),
+            ),
             child: Icon(icon, color: color, size: 24),
           ),
           const SizedBox(width: 20),
@@ -272,179 +591,28 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        color: AppColors.textMain)),
-                const SizedBox(height: 4),
-                Text(desc,
-                    style: const TextStyle(
-                        color: AppColors.textMuted, fontSize: 13, height: 1.4)),
-              ],
-            ),
-          )
-        ],
-      ),
-    );
-  }
-
-  // --- UI FORMS ---
-
-  void _showTaskSheet({EisenhowerTask? task}) {
-    final titleController = TextEditingController(text: task?.title ?? "");
-    final descController = TextEditingController(text: task?.description ?? "");
-    Quadrant selectedQuadrant =
-        task?.quadrant ?? Quadrant.values[_tabController.index];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (context) => StatefulBuilder(builder: (context, setSheetState) {
-        return Padding(
-          padding:
-              EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            decoration: const BoxDecoration(
-              color: AppColors.surface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                    child: Container(
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                            color: Colors.grey[300],
-                            borderRadius: BorderRadius.circular(10)))),
-                const SizedBox(height: 24),
-                Text(task == null ? "New Task" : "Edit Task",
-                    style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textMain)),
-                const SizedBox(height: 20),
-
-                // Title
-                TextField(
-                  controller: titleController,
-                  autofocus: true,
-                  textCapitalization: TextCapitalization.sentences,
+                Text(
+                  title,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w600, color: AppColors.textMain),
-                  decoration: InputDecoration(
-                    labelText: "Title",
-                    hintText: "What needs to be done?",
-                    filled: true,
-                    fillColor: AppColors.background,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                    color: AppColors.textMain,
                   ),
                 ),
-                const SizedBox(height: 16),
-
-                // Desc
-                TextField(
-                  controller: descController,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(color: AppColors.textMain),
-                  decoration: InputDecoration(
-                    labelText: "Description (Optional)",
-                    filled: true,
-                    fillColor: AppColors.background,
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        borderSide: BorderSide.none),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 20, vertical: 16),
+                const SizedBox(height: 4),
+                Text(
+                  desc,
+                  style: const TextStyle(
+                    color: AppColors.textMuted,
+                    fontSize: 13,
+                    height: 1.4,
                   ),
                 ),
-                const SizedBox(height: 24),
-
-                // Category Selector
-                const Text("Category",
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.textMuted,
-                        fontSize: 13)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: Quadrant.values.map((q) {
-                    final isSelected = selectedQuadrant == q;
-                    final color = _getQuadrantColor(q);
-                    return GestureDetector(
-                      onTap: () => setSheetState(() => selectedQuadrant = q),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 200),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: isSelected ? color : Colors.transparent,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(
-                              color: isSelected
-                                  ? color
-                                  : Colors.grey.withValues(alpha: 0.3)),
-                        ),
-                        child: Text(
-                          _getQuadrantLabel(q),
-                          style: TextStyle(
-                            color:
-                                isSelected ? Colors.white : AppColors.textMuted,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-
-                const SizedBox(height: 32),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.textMain,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16)),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      elevation: 0,
-                    ),
-                    onPressed: () {
-                      if (titleController.text.trim().isNotEmpty) {
-                        if (task == null) {
-                          _addTask(titleController.text, descController.text,
-                              selectedQuadrant);
-                        } else {
-                          _editTask(task.id, titleController.text,
-                              descController.text, selectedQuadrant);
-                        }
-                        Navigator.pop(context);
-                      }
-                    },
-                    child: const Text("Save Task",
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16)),
-                  ),
-                )
               ],
             ),
           ),
-        );
-      }),
+        ],
+      ),
     );
   }
 
@@ -452,9 +620,9 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Warna aktif berdasarkan tab saat ini
-    final activeColor =
-        _getQuadrantColor(Quadrant.values[_tabController.index]);
+    final activeColor = _getQuadrantColor(
+      Quadrant.values[_tabController.index],
+    );
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -463,21 +631,29 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              size: 20, color: AppColors.textMain),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            size: 20,
+            color: AppColors.textMain,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text("Priorities",
-            style: TextStyle(
-                fontWeight: FontWeight.w800, color: AppColors.textMain)),
+        title: const Text(
+          "Priorities",
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: AppColors.textMain,
+          ),
+        ),
         actions: [
           IconButton(
             onPressed: _showIntroGuide,
-            icon: const Icon(Icons.help_outline_rounded,
-                color: AppColors.textMuted),
-          )
+            icon: const Icon(
+              Icons.help_outline_rounded,
+              color: AppColors.textMuted,
+            ),
+          ),
         ],
-        // --- CUSTOM MODERN TAB BAR ---
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(70),
           child: Container(
@@ -485,14 +661,12 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
             height: 50,
             decoration: BoxDecoration(
               color: AppColors.background,
-              borderRadius: BorderRadius.circular(25), // Full rounded capsule
+              borderRadius: BorderRadius.circular(25),
             ),
             child: TabBar(
               controller: _tabController,
               overlayColor: WidgetStateProperty.all(Colors.transparent),
               dividerColor: Colors.transparent,
-
-              // Style Indikator: Kapsul melayang
               indicatorSize: TabBarIndicatorSize.tab,
               indicatorPadding: const EdgeInsets.all(4),
               indicator: BoxDecoration(
@@ -500,19 +674,22 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                 borderRadius: BorderRadius.circular(25),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
-                      blurRadius: 4,
-                      offset: const Offset(0, 2))
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
                 ],
               ),
-
               labelColor: activeColor,
               unselectedLabelColor: AppColors.textMuted,
-              labelStyle:
-                  const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-              unselectedLabelStyle:
-                  const TextStyle(fontWeight: FontWeight.w400, fontSize: 12),
-
+              labelStyle: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 12,
+              ),
+              unselectedLabelStyle: const TextStyle(
+                fontWeight: FontWeight.w400,
+                fontSize: 12,
+              ),
               tabs: const [
                 Tab(text: "DO"),
                 Tab(text: "PLAN"),
@@ -524,32 +701,35 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
         ),
       ),
       floatingActionButton: SlideTransition(
-        position: Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero)
-            .animate(_entryAnimController),
+        position: Tween<Offset>(
+          begin: const Offset(0, 1),
+          end: Offset.zero,
+        ).animate(_entryAnimController),
         child: FloatingActionButton.extended(
           onPressed: () => _showTaskSheet(),
           backgroundColor: activeColor,
           elevation: 3,
           icon: const Icon(Icons.add_rounded, color: Colors.white),
-          label: const Text("New Task",
-              style:
-                  TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+          label: const Text(
+            "New Task",
+            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+          ),
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: Quadrant.values.map((q) => _buildTaskList(q)).toList(),
-      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tabController,
+              children: Quadrant.values.map((q) => _buildTaskList(q)).toList(),
+            ),
     );
   }
 
   Widget _buildTaskList(Quadrant quadrant) {
-    // Filter data sesuai kuadran
     final qTasks = tasks.where((t) => t.quadrant == quadrant).toList();
     final color = _getQuadrantColor(quadrant);
 
     if (qTasks.isEmpty) {
-      // EMPTY STATE
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -560,15 +740,19 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                 color: color.withValues(alpha: 0.1),
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.assignment_add,
-                  size: 48, color: color.withValues(alpha: 0.5)),
+              child: Icon(
+                Icons.assignment_add,
+                size: 48,
+                color: color.withValues(alpha: 0.5),
+              ),
             ),
             const SizedBox(height: 16),
             Text(
               "No tasks in ${_getQuadrantLabel(quadrant)}",
               style: TextStyle(
-                  color: AppColors.textMuted.withValues(alpha: 0.6),
-                  fontWeight: FontWeight.w600),
+                color: AppColors.textMuted.withValues(alpha: 0.6),
+                fontWeight: FontWeight.w600,
+              ),
             ),
             const SizedBox(height: 80),
           ],
@@ -579,19 +763,18 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 100),
       itemCount: qTasks.length,
-      // Use __ for the second parameter to make it unique
       separatorBuilder: (_, _) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
         final task = qTasks[index];
 
-        // --- TASK CARD ---
         return SlideTransition(
           position: Tween<Offset>(begin: const Offset(0, 0.1), end: Offset.zero)
               .animate(
-            CurvedAnimation(
-                parent: _entryAnimController,
-                curve: Interval(index * 0.1, 1.0, curve: Curves.easeOut)),
-          ),
+                CurvedAnimation(
+                  parent: _entryAnimController,
+                  curve: Interval(index * 0.1, 1.0, curve: Curves.easeOut),
+                ),
+              ),
           child: Dismissible(
             key: Key(task.id),
             direction: DismissDirection.endToStart,
@@ -600,11 +783,13 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
               alignment: Alignment.centerRight,
               padding: const EdgeInsets.only(right: 20),
               decoration: BoxDecoration(
-                color: AppColors.error, // Menggunakan warna error untuk delete
+                color: AppColors.error,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child:
-                  const Icon(Icons.delete_outline_rounded, color: Colors.white),
+              child: const Icon(
+                Icons.delete_outline_rounded,
+                color: Colors.white,
+              ),
             ),
             child: Container(
               decoration: BoxDecoration(
@@ -612,9 +797,10 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.03),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4))
+                    color: Colors.black.withValues(alpha: 0.03),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
                 ],
               ),
               child: ClipRRect(
@@ -625,7 +811,6 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                     onTap: () => _showTaskSheet(task: task),
                     child: Row(
                       children: [
-                        // Color Indicator Strip (Kiri)
                         Container(
                           width: 6,
                           height: 80,
@@ -634,10 +819,11 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                         Expanded(
                           child: Padding(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 14),
+                              horizontal: 16,
+                              vertical: 14,
+                            ),
                             child: Row(
                               children: [
-                                // Checkbox Custom
                                 GestureDetector(
                                   onTap: () => _toggleTask(task.id),
                                   child: AnimatedContainer(
@@ -650,20 +836,22 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                                           : color.withValues(alpha: 0.1),
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                          color: task.isCompleted
-                                              ? Colors.grey[400]!
-                                              : color,
-                                          width: 2),
+                                        color: task.isCompleted
+                                            ? Colors.grey[400]!
+                                            : color,
+                                        width: 2,
+                                      ),
                                     ),
                                     child: task.isCompleted
-                                        ? const Icon(Icons.check,
-                                            size: 16, color: Colors.white)
+                                        ? const Icon(
+                                            Icons.check,
+                                            size: 16,
+                                            color: Colors.white,
+                                          )
                                         : null,
                                   ),
                                 ),
                                 const SizedBox(width: 16),
-
-                                // Texts
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
@@ -689,11 +877,12 @@ class _EisenhowerScreenState extends State<EisenhowerScreen>
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                           style: TextStyle(
-                                              fontSize: 13,
-                                              color: AppColors.textMuted
-                                                  .withValues(alpha: 0.7)),
+                                            fontSize: 13,
+                                            color: AppColors.textMuted
+                                                .withValues(alpha: 0.7),
+                                          ),
                                         ),
-                                      ]
+                                      ],
                                     ],
                                   ),
                                 ),
