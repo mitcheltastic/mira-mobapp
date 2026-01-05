@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // IMPORT HELPER & CONSTANTS
 import '../../../core/constant/app_colors.dart';
-import '../../../core/utils/premium_helper.dart';
 import '../widgets/note_card.dart';
 import '../widgets/note_editor_screen.dart';
 

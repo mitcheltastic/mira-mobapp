@@ -108,6 +108,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     }
 
     // 2. PROCEED IF ALLOWED
+    if (!mounted) return; // ✅ Guard: ensure context is valid
     _textController.clear();
     FocusScope.of(context).unfocus();
 
@@ -175,6 +176,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
   }
 
   void _showUpgradeDialog(UserTier currentTier) {
+    if (!mounted) return; // ✅ Guard: ensure context is valid
     String message = SubscriptionService().getLimitMessage(currentTier, 'ai');
 
     showDialog(
@@ -292,7 +294,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              // Removed static "Basic/Unlimited" text as limits are now dynamic per message
             ],
           ),
         ],
