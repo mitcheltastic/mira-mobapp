@@ -25,8 +25,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // --- STATE VARIABLES ---
   File? _selectedImage;
   String? _avatarUrl;
-  bool _isUploading = false; // Now used
+  bool _isUploading = false;
   bool _isLoadingProfile = true;
+
+  // Realtime Channel
+  RealtimeChannel? _subscriptionChannel; // <--- NEW VARIABLE
 
   // Data User
   String _fullName = "User";
@@ -37,6 +40,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _getProfileData();
+    _setupRealtimeListener(); // <--- START LISTENER
+  }
+
+  @override
+  void dispose() {
+    // <--- CLEANUP LISTENER
+    if (_subscriptionChannel != null) {
+      Supabase.instance.client.removeChannel(_subscriptionChannel!);
+    }
+    super.dispose();
+  }
+
+  // --- NEW: REALTIME LISTENER FOR PROFILE ---
+  void _setupRealtimeListener() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    _subscriptionChannel = Supabase.instance.client
+        .channel('public:level:profile') // Unique name for this screen
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update, // We only care about Updates here
+          schema: 'public',
+          table: 'level',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            // Get the new status from the database update
+            final newStatus = payload.newRecord['status'];
+
+            if (mounted && newStatus != null) {
+              setState(() {
+                _subscriptionStatus = newStatus;
+              });
+
+              // Optional: Show a toast that the profile updated
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text("Profile updated: You are now $newStatus!"),
+                  backgroundColor: const Color(0xFF34D399),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+        )
+        .subscribe();
   }
 
   // --- FUNGSI DATA ---

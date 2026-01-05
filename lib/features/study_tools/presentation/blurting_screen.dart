@@ -678,7 +678,6 @@ class _BlurtingScreenState extends State<BlurtingScreen>
                       ),
                     ),
                   ],
-
                   // --- NEW BUTTON ENDS HERE ---
                   const SizedBox(height: 24),
 

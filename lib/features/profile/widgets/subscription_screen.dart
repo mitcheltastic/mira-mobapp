@@ -14,6 +14,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   bool _isLoading = false;
   bool _isFetching = true;
 
+  // --- NEW: Track pending status and realtime channel ---
+  bool _isPending = false;
+  RealtimeChannel? _subscriptionChannel;
+
   // 'Reguler', 'Monthly Plus', 'Monthly Premium', 'Yearly Premium'
   String _currentStatus = 'Reguler';
 
@@ -50,6 +54,76 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
   void initState() {
     super.initState();
     _fetchUserLevel();
+    _checkPendingStatus(); // <--- Check if we are already waiting
+    _setupRealtimeListener(); // <--- Listen for Admin approval
+  }
+
+  @override
+  void dispose() {
+    // Clean up the realtime listener
+    if (_subscriptionChannel != null) {
+      Supabase.instance.client.removeChannel(_subscriptionChannel!);
+    }
+    super.dispose();
+  }
+
+  // --- NEW: Listen for changes in 'level' table ---
+  void _setupRealtimeListener() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
+
+    _subscriptionChannel = Supabase.instance.client
+        .channel('public:level')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'level',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            // Admin approved! Refresh level and clear pending status.
+            _fetchUserLevel();
+            if (mounted) {
+              setState(() {
+                _isPending = false;
+              });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text("Upgrade Approved! Access granted."),
+                  backgroundColor: Color(0xFF34D399),
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  // --- NEW: Check if user has a pending request ---
+  Future<void> _checkPendingStatus() async {
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) return;
+
+      final data = await Supabase.instance.client
+          .from('subscription_requests')
+          .select()
+          .eq('user_id', user.id)
+          .eq('status', 'pending')
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _isPending = data != null;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error checking pending status: $e");
+    }
   }
 
   // --- 1. FETCH CURRENT LEVEL ---
@@ -76,7 +150,7 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     }
   }
 
-  // --- 2. SUBSCRIBE LOGIC ---
+  // --- 2. SUBSCRIBE LOGIC (NOW REQUESTS ACCESS) ---
   Future<void> _subscribe() async {
     setState(() => _isLoading = true);
 
@@ -84,39 +158,38 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      // Get the status string from the selected plan map
-      final String newStatus = _plans[_selectedPlanIndex]['id'];
+      final String planToRequest = _plans[_selectedPlanIndex]['id'];
 
-      // Simulate Payment
-      await Future.delayed(const Duration(seconds: 2));
+      // Simulate network delay
+      await Future.delayed(const Duration(seconds: 1));
 
-      // Update DB
-      await Supabase.instance.client.from('level').upsert({
-        'id': user.id,
-        'status': newStatus,
-        'updated_at': DateTime.now().toIso8601String(),
+      // Insert into Requests Table instead of directly updating level
+      await Supabase.instance.client.from('subscription_requests').insert({
+        'user_id': user.id,
+        'requested_plan': planToRequest,
+        'status': 'pending',
       });
 
-      // If Plus/Premium, we might need to reset counters if upgrading from free
-      // But usually, we just let the SubscriptionService handle logic.
-
       if (mounted) {
-        setState(() => _currentStatus = newStatus);
+        setState(() {
+          _isPending = true;
+        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("Success! You are now a $newStatus user."),
-            backgroundColor: const Color(0xFF34D399),
+            content: Text(
+              "Request sent for $planToRequest! Waiting for approval.",
+            ),
+            backgroundColor: const Color(0xFF6366F1),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
           ),
         );
-        Navigator.pop(context); // Optional: Close screen after success
       }
     } catch (e) {
-      _showErrorSnackBar("Subscription failed: $e");
+      _showErrorSnackBar("Request failed: $e");
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -339,9 +412,11 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                               SizedBox(
                                 width: double.infinity,
                                 child: ElevatedButton(
+                                  // DISABLE BUTTON IF PENDING OR ALREADY SUBSCRIBED
                                   onPressed:
                                       (_isLoading ||
-                                          isAlreadySubscribedToSelected)
+                                          isAlreadySubscribedToSelected ||
+                                          _isPending)
                                       ? null
                                       : _subscribe,
                                   style: ElevatedButton.styleFrom(
@@ -353,7 +428,9 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
-                                    elevation: isAlreadySubscribedToSelected
+                                    elevation:
+                                        (isAlreadySubscribedToSelected ||
+                                            _isPending)
                                         ? 0
                                         : 5,
                                   ),
@@ -367,11 +444,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
                                           ),
                                         )
                                       : Text(
-                                          isAlreadySubscribedToSelected
-                                              ? "Current Plan"
-                                              : "Upgrade to ${_plans[_selectedPlanIndex]['title']}",
+                                          _getButtonText(
+                                            isAlreadySubscribedToSelected,
+                                          ),
                                           style: TextStyle(
-                                            color: isAlreadySubscribedToSelected
+                                            color:
+                                                (isAlreadySubscribedToSelected ||
+                                                    _isPending)
                                                 ? Colors.grey[600]
                                                 : Colors.white,
                                             fontWeight: FontWeight.bold,
@@ -410,6 +489,13 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
     );
   }
 
+  // Helper for button text logic
+  String _getButtonText(bool isAlreadySubscribed) {
+    if (isAlreadySubscribed) return "Current Plan";
+    if (_isPending) return "Waiting for Approval...";
+    return "Request Upgrade to ${_plans[_selectedPlanIndex]['title']}";
+  }
+
   Widget _buildDynamicFeatures() {
     // Show features based on selected plan
     final planId = _plans[_selectedPlanIndex]['id'];
@@ -431,7 +517,10 @@ class _SubscriptionScreenState extends State<SubscriptionScreen> {
       child: Column(
         children: [
           // Common Features
-          _FeatureRow(text: "Unlock Blurting & Flashcards", isIncluded: true),
+          const _FeatureRow(
+            text: "Unlock Blurting & Flashcards",
+            isIncluded: true,
+          ),
           const SizedBox(height: 12),
 
           // Differentiated Features
