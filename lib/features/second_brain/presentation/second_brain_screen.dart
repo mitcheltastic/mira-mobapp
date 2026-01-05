@@ -4,9 +4,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 // IMPORT HELPER & CONSTANTS
 import '../../../core/constant/app_colors.dart';
-import '../../../core/utils/premium_helper.dart';
 import '../widgets/note_card.dart';
 import '../widgets/note_editor_screen.dart';
+
+// --- IMPORT SUBSCRIPTION SERVICE ---
+import '../../../core/services/subscription_service.dart';
+import '../../profile/widgets/subscription_screen.dart';
 
 class SecondBrainScreen extends StatefulWidget {
   final bool isPro;
@@ -33,6 +36,10 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
   List<Map<String, dynamic>> _filteredNotes = [];
   bool _isLoading = true;
 
+  // --- TIER STATE ---
+  UserTier _currentTier = UserTier.regular;
+  int _maxNotes = 5;
+
   @override
   void initState() {
     super.initState();
@@ -48,8 +55,29 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
       duration: const Duration(milliseconds: 800),
     )..forward();
 
-    // Fetch Data
-    _fetchNotes();
+    // Fetch Data & Tier
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    await Future.wait([_fetchTierInfo(), _fetchNotes()]);
+  }
+
+  Future<void> _fetchTierInfo() async {
+    final tier = await SubscriptionService().getUserTier();
+    if (mounted) {
+      setState(() {
+        _currentTier = tier;
+        // Determine max notes for display based on tier
+        if (tier == UserTier.plus) {
+          _maxNotes = 25;
+        } else if (tier == UserTier.premium) {
+          _maxNotes = 9999; // Represents unlimited visually
+        } else {
+          _maxNotes = 5;
+        }
+      });
+    }
   }
 
   Future<void> _fetchNotes() async {
@@ -110,15 +138,20 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
     });
   }
 
-  // --- LOGIKA TAMBAH/EDIT DATA ---
+  // --- LOGIKA CRUD ---
 
   void _addNewNote() async {
     HapticFeedback.mediumImpact();
 
-    // --- PREMIUM CHECK ---
-    // If not Pro AND has 5 or more notes, block access
-    if (!widget.isPro && _notes.length >= 5) {
-      showPremiumDialog(context, featureName: "Unlimited Notes");
+    // --- 1. LOCAL LIMIT CHECK (FIXED) ---
+    // We check against the actual list length we just loaded.
+    // This ensures if the UI says "5/5", you CANNOT add more.
+    int limit = 5;
+    if (_currentTier == UserTier.plus) limit = 25;
+    if (_currentTier == UserTier.premium) limit = 99999; // Unlimited
+
+    if (_notes.length >= limit) {
+      _showUpgradeDialog();
       return;
     }
 
@@ -136,12 +169,118 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
     await Navigator.push(
       context,
       MaterialPageRoute(
-        // Ensure NoteEditorScreen accepts 'existingNote'
         builder: (context) => NoteEditorScreen(existingNote: currentNote),
       ),
     );
     // Refresh data on return
     _fetchNotes();
+  }
+
+  Future<void> _deleteNote(String noteId) async {
+    final deletedNoteIndex = _notes.indexWhere((n) => n['id'] == noteId);
+    if (deletedNoteIndex == -1) return;
+
+    final deletedNote = _notes[deletedNoteIndex];
+
+    setState(() {
+      _notes.removeAt(deletedNoteIndex);
+      _filteredNotes = List.from(_notes);
+    });
+
+    HapticFeedback.mediumImpact();
+
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+          SnackBar(
+            content: const Text("Note deleted"),
+            action: SnackBarAction(
+              label: "Undo",
+              textColor: Colors.white,
+              onPressed: () async {
+                setState(() {
+                  _notes.insert(deletedNoteIndex, deletedNote);
+                  _filteredNotes = List.from(_notes);
+                });
+                return;
+              },
+            ),
+            duration: const Duration(seconds: 3),
+          ),
+        )
+        .closed
+        .then((reason) async {
+          if (reason != SnackBarClosedReason.action) {
+            try {
+              await _supabase.from('notes').delete().eq('id', noteId);
+            } catch (e) {
+              debugPrint("Error deleting note: $e");
+            }
+          }
+        });
+  }
+
+  void _showDeleteConfirmation(Map<String, dynamic> note) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Note?"),
+        content: const Text("This action cannot be undone."),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _deleteNote(note['id']);
+            },
+            child: const Text("Delete", style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showUpgradeDialog() {
+    String message = SubscriptionService().getLimitMessage(
+      _currentTier,
+      'notes',
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text("Storage Full"),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (c) => const SubscriptionScreen()),
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0F172A),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text(
+              "Upgrade Now",
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   // --- INTRO GUIDE ---
@@ -397,15 +536,67 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
 
                             return FadeTransition(
                               opacity: _fadeController,
-                              child: NoteCard(
-                                title: note['title'] ?? 'Untitled',
-                                content: note['content'] ?? '',
-                                date:
-                                    note['created_at'] ??
-                                    DateTime.now().toIso8601String(),
-                                category: note['category'] ?? 'Uncategorized',
-                                accentColor: noteColor,
-                                onTap: () => _editNote(note),
+                              child: Dismissible(
+                                key: Key(note['id']),
+                                direction: DismissDirection.endToStart,
+                                background: Container(
+                                  alignment: Alignment.centerRight,
+                                  padding: const EdgeInsets.only(right: 20),
+                                  color: Colors.red,
+                                  child: const Icon(
+                                    Icons.delete,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                confirmDismiss: (direction) async {
+                                  return await showDialog(
+                                    context: context,
+                                    builder: (BuildContext context) {
+                                      return AlertDialog(
+                                        title: const Text("Delete Note?"),
+                                        content: const Text(
+                                          "Are you sure you want to delete this note?",
+                                        ),
+                                        actions: <Widget>[
+                                          TextButton(
+                                            onPressed: () => Navigator.of(
+                                              context,
+                                            ).pop(false),
+                                            child: const Text("Cancel"),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.of(context).pop(true),
+                                            child: const Text(
+                                              "Delete",
+                                              style: TextStyle(
+                                                color: Colors.red,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    },
+                                  );
+                                },
+                                onDismissed: (direction) {
+                                  _deleteNote(note['id']);
+                                },
+                                child: GestureDetector(
+                                  onLongPress: () =>
+                                      _showDeleteConfirmation(note),
+                                  child: NoteCard(
+                                    title: note['title'] ?? 'Untitled',
+                                    content: note['content'] ?? '',
+                                    date:
+                                        note['created_at'] ??
+                                        DateTime.now().toIso8601String(),
+                                    category:
+                                        note['category'] ?? 'Uncategorized',
+                                    accentColor: noteColor,
+                                    onTap: () => _editNote(note),
+                                  ),
+                                ),
                               ),
                             );
                           },
@@ -420,6 +611,13 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
   }
 
   Widget _buildHeader(BuildContext context) {
+    // --- DETERMINE BADGE STYLE ---
+    bool isUnlimited = _currentTier == UserTier.premium;
+    int limit = _maxNotes;
+
+    // Check if over limit
+    bool isOverLimit = !isUnlimited && _notes.length >= limit;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       child: Row(
@@ -452,26 +650,26 @@ class _SecondBrainScreenState extends State<SecondBrainScreen>
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: widget.isPro
+                  color: isUnlimited
                       ? AppColors.primary.withValues(alpha: 0.1)
-                      : Colors.grey[100],
+                      : (isOverLimit
+                            ? Colors.red.withValues(alpha: 0.1)
+                            : Colors.grey[100]),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
-                    color: (!widget.isPro && _notes.length >= 5)
+                    color: isOverLimit
                         ? Colors.red.withValues(alpha: 0.5)
                         : Colors.transparent,
                   ),
                 ),
                 child: Text(
-                  widget.isPro ? "PRO" : "${_notes.length}/5",
+                  isUnlimited ? "PRO" : "${_notes.length}/$limit",
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.bold,
-                    color: widget.isPro
+                    color: isUnlimited
                         ? AppColors.primary
-                        : ((!widget.isPro && _notes.length >= 5)
-                              ? Colors.red
-                              : Colors.grey),
+                        : (isOverLimit ? Colors.red : Colors.grey[700]),
                   ),
                 ),
               ),
