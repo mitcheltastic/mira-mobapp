@@ -29,6 +29,11 @@ class _AIChatScreenState extends State<AIChatScreen> {
   final List<ChatMessage> _messages = [];
   bool _isTyping = false;
 
+  // --- STATE FOR UI STATS ---
+  String _userPlan = "Loading...";
+  int _usageCount = 0;
+  int _limitCount = 0;
+
   final List<String> _masterSuggestions = [
     "Explain Quantum Physics like I'm 5",
     "Create a study plan for Finals",
@@ -52,6 +57,10 @@ class _AIChatScreenState extends State<AIChatScreen> {
 
     _masterSuggestions.shuffle();
     _displayedSuggestions = _masterSuggestions.take(4).toList();
+
+    // 1. Load Stats on Init
+    _loadUserStats();
+    _loadChatHistory();
 
     if (_apiKey.isEmpty) {
       debugPrint("ERROR: GEMINI_API_KEY is missing in .env file!");
@@ -79,6 +88,99 @@ class _AIChatScreenState extends State<AIChatScreen> {
           - Never say "I am a large language model." Say "I am Mira AI."
         """),
       );
+    }
+  }
+
+  // --- UPDATED FUNCTION: FETCH STATS & APPLY LIMITS ---
+  Future<void> _loadUserStats() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // 1. Get User Plan (Status)
+      final profileRes = await Supabase.instance.client
+          .from('profiles')
+          .select('level(status)')
+          .eq('id', userId)
+          .single();
+
+      String status = "Reguler";
+      if (profileRes['level'] != null) {
+        status = profileRes['level']['status'] ?? "Reguler";
+      }
+
+      // 2. Tentukan Limit Berdasarkan Status (Business Logic)
+      int maxLimit = 5; // Default untuk Reguler
+
+      if (status == 'Monthly Plus') {
+        maxLimit = 100;
+      } else if (status.contains('Premium')) {
+        // Untuk Premium (Monthly/Yearly), kita set angka sangat tinggi
+        // Nanti di UI kita bisa cek jika angka ini > 9999 maka tampilkan "Unlimited"
+        maxLimit = 999999;
+      }
+
+      // 3. Get Current Usage (Hitung chat bulan ini)
+      final now = DateTime.now();
+      final startOfMonth = DateTime(now.year, now.month, 1).toIso8601String();
+
+      final int currentUsage = await Supabase.instance.client
+          .from('ai_chat_logs')
+          .count(CountOption.exact)
+          .eq('user_id', userId)
+          .eq('sender', 'user')
+          .gte('created_at', startOfMonth);
+
+      if (mounted) {
+        setState(() {
+          _userPlan = status;
+          _limitCount = maxLimit;
+          _usageCount = currentUsage;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading stats: $e");
+    }
+  }
+
+  Future<void> _loadChatHistory() async {
+    try {
+      final userId = Supabase.instance.client.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Fetch logs from DB, ordered by time (Oldest first)
+      final List<dynamic> response = await Supabase.instance.client
+          .from('ai_chat_logs')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: true);
+
+      // Convert DB data to your ChatMessage model
+      final List<ChatMessage> history = response.map((log) {
+        return ChatMessage(
+          text: log['message'] ?? '',
+          // If sender is 'user', isUser = true. If 'ai', isUser = false.
+          isUser: log['sender'] == 'user',
+          timestamp: DateTime.parse(log['created_at']),
+        );
+      }).toList();
+
+      if (mounted) {
+        setState(() {
+          // Add history to the beginning of the list or replace it
+          _messages.clear();
+          _messages.addAll(history);
+        });
+
+        // Scroll to bottom so user sees latest message
+        if (_messages.isNotEmpty) {
+          WidgetsBinding.instance.addPostFrameCallback(
+            (_) => _scrollToBottom(),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint("Error loading chat history: $e");
     }
   }
 
@@ -117,6 +219,8 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ChatMessage(text: text, isUser: true, timestamp: DateTime.now()),
       );
       _isTyping = true;
+      // Optimistically update usage count in UI
+      _usageCount++;
     });
     _scrollToBottom();
 
@@ -129,6 +233,9 @@ class _AIChatScreenState extends State<AIChatScreen> {
           'message': text,
           'sender': 'user',
         });
+
+        // Refresh accurate stats from DB in background
+        _loadUserStats();
       }
 
       if (_apiKey.isEmpty) {
@@ -268,47 +375,87 @@ class _AIChatScreenState extends State<AIChatScreen> {
         ),
         onPressed: () => Navigator.pop(context),
       ),
-      title: Row(
+      // --- UPDATED TITLE AREA ---
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.auto_awesome,
-              color: AppColors.primary,
-              size: 18,
+          const Text(
+            "AI Assistant",
+            style: TextStyle(
+              color: AppColors.textMain,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
             ),
           ),
-          const SizedBox(width: 10),
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 4),
+          // --- NEW STATS ROW ---
+          Row(
             children: [
-              Text(
-                "AI Assistant",
-                style: TextStyle(
-                  color: AppColors.textMain,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              // Badge 1: User Plan
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: AppColors.primary.withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: Text(
+                  _userPlan.toUpperCase(),
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              // Badge 2: Usage Count
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _usageCount >= _limitCount
+                      ? Colors.red.withValues(alpha: 0.1)
+                      : Colors.grey.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: _usageCount >= _limitCount
+                        ? Colors.red.withValues(alpha: 0.3)
+                        : Colors.grey.withValues(alpha: 0.3),
+                    width: 0.5,
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.bolt,
+                      size: 10,
+                      color: _usageCount >= _limitCount
+                          ? Colors.red
+                          : Colors.grey[600],
+                    ),
+                    const SizedBox(width: 2),
+                    Text(
+                      "$_usageCount / $_limitCount",
+                      style: TextStyle(
+                        color: _usageCount >= _limitCount
+                            ? Colors.red
+                            : Colors.grey[700],
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
           ),
         ],
       ),
-      actions: [
-        IconButton(
-          icon: const Icon(
-            Icons.delete_outline_rounded,
-            color: AppColors.textMuted,
-          ),
-          onPressed: () {
-            setState(() => _messages.clear());
-          },
-        ),
-      ],
+      // actions: [], // Removed the trash bin icon button from here
       bottom: PreferredSize(
         preferredSize: const Size.fromHeight(1),
         child: Container(color: AppColors.freeBorder, height: 1),
@@ -316,6 +463,7 @@ class _AIChatScreenState extends State<AIChatScreen> {
     );
   }
 
+  // ... (Remainder of the widget: _buildEmptyState, _buildMessageList, etc. stays the same)
   Widget _buildEmptyState() {
     return Center(
       child: SingleChildScrollView(
@@ -528,7 +676,6 @@ class _AIChatScreenState extends State<AIChatScreen> {
 }
 
 // --- CLASS MODEL & WIDGET PENDUKUNG ---
-
 class ChatMessage {
   final String text;
   final bool isUser;
