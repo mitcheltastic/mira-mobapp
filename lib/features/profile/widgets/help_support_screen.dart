@@ -1,6 +1,9 @@
+import 'package:flutter/gestures.dart'; // Needed for TapGestureRecognizer
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart'; 
-import '../../../core/constant/app_colors.dart'; 
+import 'package:url_launcher/url_launcher.dart';
+import '../../../core/constant/app_colors.dart';
+// IMPORT THE DELETE SCREEN
+import '../presentation/delete_account_screen.dart'; // Make sure this path matches where you put the file above
 
 class HelpSupportScreen extends StatefulWidget {
   const HelpSupportScreen({super.key});
@@ -14,39 +17,48 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
   final List<Map<String, String>> _faqs = [
     {
       "question": "How do I upgrade to Pro Plan?",
-      "answer": "Go to your Profile page, tap on the subscription card, and choose between the Monthly or Yearly plan."
+      "answer":
+          "Go to your Profile page, tap on the subscription card, and choose between the Monthly or Yearly plan.",
     },
     {
       "question": "What is the 'Second Brain' feature?",
-      "answer": "Second Brain is a digital note-taking system designed to help you organize thoughts and ideas efficiently."
+      "answer":
+          "Second Brain is a digital note-taking system designed to help you organize thoughts and ideas efficiently.",
     },
     {
       "question": "Does the app support Offline Mode?",
-      "answer": "Yes! You can access your Notes and Flashcards without an internet connection."
+      "answer":
+          "Yes! You can access your Notes and Flashcards without an internet connection.",
     },
     {
       "question": "How do I restore my purchase?",
-      "answer": "Go to the Subscription page and tap the 'Restore' button at the top right corner."
+      "answer":
+          "Go to the Subscription page and tap the 'Restore' button at the top right corner.",
     },
     {
       "question": "Can I sync my data?",
-      "answer": "Yes, as long as you are logged in, your data syncs across devices in real-time."
+      "answer":
+          "Yes, as long as you are logged in, your data syncs across devices in real-time.",
     },
     {
       "question": "How do I reset my password?",
-      "answer": "Go to Profile > Security. If logged out, click 'Forgot Password' on the login screen."
+      "answer":
+          "Go to Profile > Security. If logged out, click 'Forgot Password' on the login screen.",
     },
     {
       "question": "Is my data secure?",
-      "answer": "Absolutely. We use end-to-end encryption. We do not sell your data."
+      "answer":
+          "Absolutely. We use end-to-end encryption. We do not sell your data.",
     },
     {
       "question": "How do I cancel my subscription?",
-      "answer": "You can cancel anytime via the Google Play Store or Apple App Store subscriptions menu."
+      "answer":
+          "You can cancel anytime via the Google Play Store or Apple App Store subscriptions menu.",
     },
     {
       "question": "I found a bug, where can I report it?",
-      "answer": "Please use the 'Contact Support' button above to email us details regarding the bug."
+      "answer":
+          "Please use the 'Contact Support' button above to email us details regarding the bug.",
     },
   ];
 
@@ -81,8 +93,10 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
 
   String? _encodeQueryParameters(Map<String, String> params) {
     return params.entries
-        .map((MapEntry<String, String> e) =>
-            '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+        .map(
+          (MapEntry<String, String> e) =>
+              '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}',
+        )
         .join('&');
   }
 
@@ -95,16 +109,20 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_new_rounded,
-              color: AppColors.textMain, size: 20),
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: AppColors.textMain,
+            size: 20,
+          ),
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
           "Help & Support",
           style: TextStyle(
-              color: AppColors.textMain,
-              fontWeight: FontWeight.w700,
-              fontSize: 16),
+            color: AppColors.textMain,
+            fontWeight: FontWeight.w700,
+            fontSize: 16,
+          ),
         ),
       ),
       body: SingleChildScrollView(
@@ -115,19 +133,24 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 10),
-              
+
               const Text(
                 "How can we help?",
                 style: TextStyle(
-                    fontSize: 26,
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textMain,
-                    letterSpacing: -0.5),
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textMain,
+                  letterSpacing: -0.5,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
                 "Find answers to common questions or contact our team directly.",
-                style: TextStyle(fontSize: 15, color: AppColors.textMuted, height: 1.4),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: AppColors.textMuted,
+                  height: 1.4,
+                ),
               ),
               const SizedBox(height: 32),
 
@@ -138,9 +161,8 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                        AppColors.primary, 
-                        // PERBAIKAN 1: Ganti withOpacity -> withValues
-                        AppColors.primary.withValues(alpha: 0.8) 
+                      AppColors.primary,
+                      AppColors.primary.withValues(alpha: 0.8),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -148,7 +170,6 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
-                      // PERBAIKAN 2: Ganti withOpacity -> withValues
                       color: AppColors.primary.withValues(alpha: 0.3),
                       blurRadius: 15,
                       offset: const Offset(0, 8),
@@ -157,7 +178,11 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                 ),
                 child: Column(
                   children: [
-                    const Icon(Icons.mail_lock_outlined, color: Colors.white, size: 48),
+                    const Icon(
+                      Icons.mail_lock_outlined,
+                      color: Colors.white,
+                      size: 48,
+                    ),
                     const SizedBox(height: 16),
                     const Text(
                       "Still need help?",
@@ -188,10 +213,13 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                         ),
                         child: const Text(
                           "Email support@mira.app",
-                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
                         ),
                       ),
-                    )
+                    ),
                   ],
                 ),
               ),
@@ -201,9 +229,10 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
               const Text(
                 "Frequently Asked Questions",
                 style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textMain),
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textMain,
+                ),
               ),
               const SizedBox(height: 16),
 
@@ -218,7 +247,11 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
                   );
                 },
               ),
-              
+
+              // --- NEW SECTION: DELETE ACCOUNT ---
+              const SizedBox(height: 10),
+              _BuildDeleteAccountCard(),
+
               const SizedBox(height: 40),
             ],
           ),
@@ -254,7 +287,11 @@ class _BuildFAQItem extends StatelessWidget {
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
           tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-          childrenPadding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+          childrenPadding: const EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: 20,
+          ),
           iconColor: AppColors.primary,
           collapsedIconColor: AppColors.textMuted,
           title: Text(
@@ -272,6 +309,83 @@ class _BuildFAQItem extends StatelessWidget {
                 fontSize: 14,
                 color: AppColors.textMuted,
                 height: 1.6,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- NEW WIDGET FOR DELETE ACCOUNT ---
+class _BuildDeleteAccountCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF1F2), // Light reddish background
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.2)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.red.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Theme(
+        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+        child: ExpansionTile(
+          tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
+          childrenPadding: const EdgeInsets.only(
+            left: 20,
+            right: 20,
+            bottom: 20,
+          ),
+          iconColor: Colors.red,
+          collapsedIconColor: Colors.red.withValues(alpha: 0.7),
+          title: const Text(
+            "How do I delete my account?",
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFF9F1239), // Dark red text
+            ),
+          ),
+          children: [
+            RichText(
+              text: TextSpan(
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Color(0xFF881337),
+                  height: 1.6,
+                  fontFamily: 'Inter', // Or your app font
+                ),
+                children: [
+                  const TextSpan(
+                    text: "Wondering how can you delete your account? ",
+                  ),
+                  TextSpan(
+                    text: "Click here.",
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      decoration: TextDecoration.underline,
+                    ),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () {
+                        // Navigate to DeleteAccountScreen
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const DeleteAccountScreen(),
+                          ),
+                        );
+                      },
+                  ),
+                ],
               ),
             ),
           ],
